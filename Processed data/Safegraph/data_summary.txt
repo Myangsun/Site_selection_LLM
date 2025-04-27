@@ -1,0 +1,16 @@
+Cambridge POI and Spend Data Summary
+=================================
+
+POI Dataset:
+  Total POIs: 15451
+  Unique business types: 129
+  Top 5 business types: lessors_of_real_estate, offices_of_physicians, service, offices_of_other_health_practitioners, restaurant
+
+Spend Dataset:
+  Total spend records: 445
+  Date range: 2022-08-01 00:00:00.000 to 2022-09-01 00:00:00.000
+  Total spend amount: $1,340,933.24
+  POIs with spend data: 445 (2.9%)
+
+Combined Dataset Statistics:
+  Total records: 15451
