@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 class FewShotEvaluator:
-    """Evaluator for few-shot learning approach using the SpatialAnalysisAgent."""
+    """Improved evaluator for few-shot learning with basic schema information."""
 
-    def __init__(self, data_dir: str, test_samples: List[Dict], data_files: Dict[str, str], openai_api_key: str = None):
+    def __init__(self, data_dir: str, test_samples: List[Dict], data_files: Dict[str, str], openai_api_key: str = os.getenv("OPENAI_API_KEY")):
         """
         Initialize the evaluator.
 
@@ -33,11 +33,39 @@ class FewShotEvaluator:
         self.data_files = data_files
         self.openai_api_key = openai_api_key
 
-        logger.info("Few-Shot evaluator initialized")
+        # Initialize with improved but minimal schema information
+        self.schema_prompt = """You are an expert in geospatial data analysis using Python. You translate natural language queries about site selection into Python code. You focus on generating concise, executable Python code without examples or explanations. Analyze the user's query, identify the spatial constraints, and write code that uses GeoPandas to find matching parcels.
+ESSENTIAL DATASET SCHEMA:
+1. Parcels ('cambridge_parcels.geojson'):
+   - 'ml': Parcel ID (string)
+   - 'use_code': Land use code (string) for commercial/retail/residential classification 
+   - 'land_area': Size in square feet (numeric)
+   - 'geometry': Spatial geometry of the parcel
+   NOTE: NO 'zoning' column. Use 'use_code' to filter
+
+2. POI ('cambridge_poi_processed.geojson'):
+   - 'business_type': Type of business/POI (NOT 'category', 'type', or 'name')
+   - 'geometry': Spatial location
+   - 'PLACEKEY': Identifier for joining with spending data
+   NOTE: NOT 'category', 'type', or 'name', use 'business_type' instead
+
+3. Census ('cambridge_census_cambridge_pct.geojson'):
+   - 'pct_adv_deg': % with advanced degrees
+   - 'pct_18_64': % aged 18-64
+   - 'median_income': Median income
+
+4. Spending ('cambridge_spend_processed.csv'):
+   - 'PLACEKEY': Join key with POI data
+   - 'RAW_TOTAL_SPEND': Consumer spending amount
+
+Use ONLY these documented fields in your code. Project to EPSG:26986 for accurate distance calculations.
+"""
+
+        logger.info(
+            "Improved Few-Shot evaluator initialized with basic schema information")
 
     def create_few_shot_prompt(self, examples: List[Dict]) -> str:
-        """
-        Create a system prompt with few-shot examples.
+        """Create a system prompt with few-shot examples and schema information.
 
         Args:
             examples: List of example dictionaries with Query, Code, Answer fields
@@ -45,11 +73,8 @@ class FewShotEvaluator:
         Returns:
             Few-shot system prompt as a string
         """
-        prompt = """You are an expert in geospatial data analysis using Python. You translate natural language queries about site selection into Python code.
-
-Below are some examples of site selection queries and the corresponding Python code that finds matching parcels:
-
-"""
+        prompt = self.schema_prompt + """Below are some examples of site selection queries and the corresponding Python code that finds matching parcels:
+        """
         # Add examples to the prompt
         for i, example in enumerate(examples):
             prompt += f"Example {i+1}:\n"
@@ -58,7 +83,8 @@ Below are some examples of site selection queries and the corresponding Python c
 
         prompt += """When given a new query, analyze it carefully to identify the spatial constraints and requirements.
 Generate Python code similar to the examples that will correctly find the parcels matching the criteria.
-Make sure your code handles all the constraints mentioned in the query and follows the patterns shown in the examples."""
+Make sure your code handles all the constraints mentioned in the query and follows the patterns shown in the examples.
+Always print the final list of parcel IDs at the end of your code."""
 
         return prompt
 
@@ -79,14 +105,14 @@ Make sure your code handles all the constraints mentioned in the query and follo
 
         results = []
 
-        for sample in tqdm(test_samples, desc=f"Few-shot ({num_examples} examples) evaluation"):
+        for sample in tqdm(test_samples, desc=f"Improved few-shot ({num_examples} examples) evaluation"):
             query = sample["Query"]
             ground_truth_ids = eval(sample["Answer"]) if isinstance(
                 sample["Answer"], str) else sample["Answer"]
 
             # Log the current query being evaluated
             logger.info(
-                f"Evaluating few-shot ({num_examples} examples) on query: {query}")
+                f"Evaluating improved few-shot ({num_examples} examples) on query: {query}")
 
             try:
                 # Select random examples from the test set (excluding current query)
@@ -98,7 +124,7 @@ Make sure your code handles all the constraints mentioned in the query and follo
                 else:
                     examples = current_samples
 
-                # Create few-shot system prompt
+                # Create few-shot system prompt with schema info
                 few_shot_prompt = self.create_few_shot_prompt(examples)
 
                 # Create a fresh agent for this evaluation
@@ -124,24 +150,24 @@ Make sure your code handles all the constraints mentioned in the query and follo
                     metrics = self.calculate_metrics(
                         generated_ids, ground_truth_ids)
                     metrics["query"] = query
-                    metrics["method"] = f"few-shot-{num_examples}"
+                    metrics["method"] = f"improved-few-shot-{num_examples}"
                     metrics["success"] = True
                     metrics["code"] = code
                     metrics["generated_ids"] = generated_ids
                     results.append(metrics)
 
                     # Log the results
-                    logger.info(f"Few-shot metrics for query '{query[:30]}...': "
+                    logger.info(f"Improved few-shot metrics for query '{query[:30]}...': "
                                 f"F1={metrics['f1_score']:.3f}, "
                                 f"Precision={metrics['precision']:.3f}, "
                                 f"Recall={metrics['recall']:.3f}")
                 else:
                     # Log the failure
                     logger.warning(
-                        f"Few-shot code execution failed for query: {query}")
+                        f"Improved few-shot code execution failed for query: {query}")
                     results.append({
                         "query": query,
-                        "method": f"few-shot-{num_examples}",
+                        "method": f"improved-few-shot-{num_examples}",
                         "success": False,
                         "code": result["data"].get("code", "")
                     })
@@ -151,10 +177,10 @@ Make sure your code handles all the constraints mentioned in the query and follo
 
             except Exception as e:
                 logger.error(
-                    f"Error in few-shot evaluation for query {query}: {e}")
+                    f"Error in improved few-shot evaluation for query {query}: {e}")
                 results.append({
                     "query": query,
-                    "method": f"few-shot-{num_examples}",
+                    "method": f"improved-few-shot-{num_examples}",
                     "success": False,
                     "error": str(e)
                 })

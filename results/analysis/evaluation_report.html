@@ -1,0 +1,69 @@
+
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Site Selection Method Evaluation Report</title>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; }
+                    h1, h2, h3 { color: #333; }
+                    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    th { background-color: #f2f2f2; }
+                    tr:nth-child(even) { background-color: #f9f9f9; }
+                    .container { max-width: 1200px; margin: 0 auto; }
+                    .metric-image { max-width: 100%; height: auto; margin: 20px 0; }
+                    .summary { margin-bottom: 30px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Site Selection Method Evaluation Report</h1>
+                    
+                    <div class="summary">
+                        <h2>Performance Summary</h2>
+                        <table>
+                            <tr>
+                                <th>Method</th>
+                                <th>Success Rate</th>
+                                <th>Precision</th>
+                                <th>Recall</th>
+                                <th>F1 Score</th>
+                                <th>Exact Match</th>
+                            </tr>
+            
+                    <tr>
+                        <td>fine_tuned</td>
+                        <td>10.00%</td>
+                        <td>100.00%</td>
+                        <td>100.00%</td>
+                        <td>100.00%</td>
+                        <td>100.00%</td>
+                    </tr>
+                    
+                        </table>
+                    </div>
+                    
+                    <div class="visualizations">
+                        <h2>Performance Visualizations</h2>
+                        
+                        <h3>Method Comparison</h3>
+                        <img src="metric_comparison.png" alt="Method Comparison" class="metric-image">
+                        
+                        <h3>Performance by Query Type</h3>
+                        <img src="query_type_performance.png" alt="Query Type Performance" class="metric-image">
+                        
+                        <h3>Code Complexity vs. Performance</h3>
+                        <img src="complexity_vs_performance.png" alt="Complexity vs Performance" class="metric-image">
+                    </div>
+                    
+                    <div class="conclusions">
+                        <h2>Conclusions</h2>
+                        <p>Based on the evaluation results, the following conclusions can be drawn:</p>
+                        <ul>
+            <li>The best-performing method is <strong>fine_tuned</strong> with an F1 score of 100.00%.</li><li>The methods perform best on <strong>Commercial</strong> queries with an average F1 score of 100.00%.</li><li>The highest variability in performance is seen in <strong>nan</strong> queries with a standard deviation of nan%.</li>
+                        </ul>
+                    </div>
+                </div>
+            </body>
+            </html>
+            

@@ -120,7 +120,7 @@ def run_method_evaluation(args):
         # Run fine-tuning pipeline
         fine_tuning_result = fine_tuner.run_fine_tuning_pipeline(
             output_dir=os.path.join(args.output_dir, "finetune_data"),
-            model="gpt-4o-mini",
+            model="gpt-4o-mini-2024-07-18",
             validation_split=0.2,
             wait_for_completion=True
         )
@@ -140,9 +140,16 @@ def run_method_evaluation(args):
         logger.info(
             f"Fine-tuning information saved to {args.output_dir}/fine_tuning_result.json")
 
-        # Run evaluation with fine-tuned model if available
-        fine_tuned_model = fine_tuning_result.get(
-            "status", {}).get("fine_tuned_model")
+        # Get fine-tuned model if available
+        fine_tuned_model = None
+        if isinstance(fine_tuning_result, dict) and 'status' in fine_tuning_result:
+            if isinstance(fine_tuning_result['status'], dict):
+                fine_tuned_model = fine_tuning_result['status'].get(
+                    'fine_tuned_model')
+            elif isinstance(fine_tuning_result['status'], str) and fine_tuning_result['status'] == "succeeded":
+                # If status is just a string success indicator, check for model directly
+                fine_tuned_model = fine_tuning_result.get('fine_tuned_model')
+
         if fine_tuned_model:
             # Store the model ID for later use
             os.environ["FINE_TUNED_MODEL_NAME"] = fine_tuned_model

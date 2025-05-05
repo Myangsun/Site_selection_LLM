@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class SpatialFineTuningHandler:
     """Handler for fine-tuning models on spatial analysis tasks."""
 
-    def __init__(self, data_dir: str, openai_api_key: Optional[str] = None):
+    def __init__(self, data_dir: str, openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")):
         """
         Initialize the fine-tuning handler.
 
@@ -30,8 +30,7 @@ class SpatialFineTuningHandler:
         if openai_api_key:
             self.client = openai.OpenAI(api_key=openai_api_key)
         else:
-            self.client = openai.OpenAI(
-                api_key=os.environ.get("OPENAI_API_KEY"))
+            raise ValueError("OpenAI API key not provided")
 
         # Load test samples if available
         self.samples = self.load_samples()
@@ -50,7 +49,7 @@ class SpatialFineTuningHandler:
         try:
             sample_path = os.path.join(self.data_dir, 'spatial_samples.json')
             if os.path.exists(sample_path):
-                with open(sample_path, 'r') as f:
+                with open(sample_path, 'r', encoding='utf-8-sig') as f:
                     samples = json.load(f)
                 logger.info(
                     f"Loaded {len(samples)} samples from {sample_path}")
@@ -385,7 +384,7 @@ class SpatialFineTuningHandler:
     def start_fine_tuning(self,
                           training_file_id: str,
                           validation_file_id: Optional[str] = None,
-                          model: str = "gpt-4o-mini",
+                          model: str = "gpt-4o-mini-2024-07-18",
                           suffix: str = "spatial-agent",
                           n_epochs: Optional[int] = None,
                           batch_size: Optional[int] = None,
@@ -510,7 +509,7 @@ class SpatialFineTuningHandler:
     def run_fine_tuning_pipeline(self,
                                  output_dir: str,
                                  format_type: str = "standard",
-                                 model: str = "gpt-4o-mini",
+                                 model: str = "gpt-4o-mini-2024-07-18",
                                  suffix: Optional[str] = None,
                                  validation_split: float = 0.2,
                                  wait_for_completion: bool = True) -> Dict[str, Any]:

@@ -1,0 +1,12 @@
+{
+  "fine_tuned": {
+    "total_queries": 20,
+    "successful_queries": 2,
+    "success_rate": 0.1,
+    "avg_precision": 1.0,
+    "avg_recall": 1.0,
+    "avg_f1_score": 1.0,
+    "avg_exact_match": 1.0,
+    "avg_result_match_rate": 1.0
+  }
+}

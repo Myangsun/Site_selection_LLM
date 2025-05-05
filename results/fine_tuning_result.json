@@ -1,4 +1,21 @@
 {
-  "status": "error",
-  "error": "Failed to prepare training data"
+  "job_id": "ftjob-OG3GgXYYQve7XhYkbCm9lryl",
+  "status": {
+    "id": "ftjob-OG3GgXYYQve7XhYkbCm9lryl",
+    "status": "succeeded",
+    "fine_tuned_model": "ft:gpt-4o-mini-2024-07-18:mit:spatial-agent-20250505-021001:BTjW7EkG",
+    "created_at": 1746425466,
+    "finished_at": 1746426178,
+    "training_file": "file-71NZ8PEsKXVWEuMf2VKjbt",
+    "validation_file": "file-WG2Z3d2MeHk4QDKsdYDXbJ",
+    "result_files": [
+      "file-7eABgX9pfv57gDXTjpHZQo"
+    ]
+  },
+  "data_files": {
+    "training_file": "../results/finetune_data/training_data.jsonl",
+    "validation_file": "../results/finetune_data/validation_data.jsonl"
+  },
+  "training_file_id": "file-71NZ8PEsKXVWEuMf2VKjbt",
+  "validation_file_id": "file-WG2Z3d2MeHk4QDKsdYDXbJ"
 }

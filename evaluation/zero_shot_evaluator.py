@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class ZeroShotEvaluator:
-    """Evaluator for zero-shot learning approach using the SpatialAnalysisAgent."""
+    """Improved evaluator for zero-shot learning with basic schema information."""
 
     def __init__(self, data_dir: str, test_samples: List[Dict], data_files: Dict[str, str], openai_api_key: str = os.getenv("OPENAI_API_KEY")):
         """
@@ -32,14 +32,51 @@ class ZeroShotEvaluator:
         self.data_files = data_files
         self.openai_api_key = openai_api_key
 
-        # Initialize SpatialAnalysisAgent with zero-shot system prompt
-        self.zero_shot_prompt = """You are an expert in geospatial data analysis using Python. 
-You translate natural language queries about site selection into Python code.
-You focus on generating concise, executable Python code without examples or explanations.
-Analyze the user's query, identify the spatial constraints, and write code that uses GeoPandas to find matching parcels."""
+        # Initialize with improved but minimal schema information
+        self.improved_prompt = """You are an expert in geospatial data analysis using Python. You translate natural language queries about site selection into Python code. You focus on generating concise, executable Python code without examples or explanations. Analyze the user's query, identify the spatial constraints, and write code that uses GeoPandas to find matching parcels.
 
-        # We'll create an agent for each evaluation to avoid state interference
-        logger.info("Zero-Shot evaluator initialized")
+REQUIRED DATASET SCHEMA - USE THESE EXACT FIELD NAMES:
+1. Parcels ('cambridge_parcels.geojson'):
+   - 'ml': Parcel ID (string) - use this for the final result
+   - 'use_code': Land use code (NOT 'land_use' or 'zoning') for filtering property types
+   - 'land_area': Size in square feet (NOT 'area' or 'size')
+   
+   Filtering parcels by type:
+   - Commercial parcels: parcels[parcels['use_code'].astype(str).isin(['300', '302', '316', '323', '324', '325', '326', '327', '330', '332', '334', '340', '341', '343', '345', '346', '353', '362', '375', '404', '406', '0340', '0406'])]
+   - Retail parcels: parcels[parcels['use_code'].astype(str).isin(['323', '324', '325', '326', '327', '330'])]
+   - Office parcels: parcels[parcels['use_code'].astype(str).isin(['340', '341', '343', '345', '346'])]
+   - Mixed-use parcels: parcels[parcels['use_code'].astype(str).isin(['0101', '0104', '0105', '0111', '0112', '0121', '013', '031', '0340', '0406', '041', '0942'])]
+   - Residential parcels: parcels[parcels['use_code'].astype(str).isin(['101', '1014', '102', '1028', '104', '105', '109', '1094', '1095', '1098', '111', '112', '113', '114', '121', '970', '9700', '9421'])]
+
+2. POI ('cambridge_poi_processed.geojson'):
+   - 'business_type': Type of business (NOT 'category', 'type', or 'name')
+   
+   Filtering POI by type:
+   - Restaurants: poi[poi['business_type'] == 'restaurant']
+   - Subway stations: Define manually using Point coordinates
+   
+3. Census ('cambridge_census_cambridge_pct.geojson'):
+   - 'pct_adv_deg': % with advanced degrees (NOT 'pct_advanced_degrees')
+   - 'pct_18_64': % aged 18-64
+   - 'median_income': Median income
+
+4. Spending ('cambridge_spend_processed.csv'):
+   - 'PLACEKEY': Join key with POI data
+   - 'RAW_TOTAL_SPEND': Consumer spending amount
+
+For spatial operations:
+1. Project to EPSG:26986: dataset = dataset.to_crs(epsg=26986)
+2. For subway stations, define using these coordinates:
+   harvard_square = Point(-71.1189, 42.3736)
+   central_square = Point(-71.1031, 42.3656)
+   kendall_mit = Point(-71.0865, 42.3625)
+   porter_square = Point(-71.1226, 42.3782)
+   alewife = Point(-71.1429, 42.3954)
+
+Always use the exact field names specified above. Return a sorted list of parcel IDs ('ml' values)."""
+
+        logger.info(
+            "Improved Zero-Shot evaluator initialized with basic schema information")
 
     def evaluate(self, test_samples: List[Dict] = None) -> List[Dict]:
         """
@@ -57,20 +94,20 @@ Analyze the user's query, identify the spatial constraints, and write code that 
 
         results = []
 
-        for sample in tqdm(test_samples, desc="Zero-shot evaluation"):
+        for sample in tqdm(test_samples, desc="Improved zero-shot evaluation"):
             query = sample["Query"]
             ground_truth_ids = eval(sample["Answer"]) if isinstance(
                 sample["Answer"], str) else sample["Answer"]
 
             # Log the current query being evaluated
-            logger.info(f"Evaluating zero-shot on query: {query}")
+            logger.info(f"Evaluating improved zero-shot on query: {query}")
 
             # Create a fresh agent for each evaluation
             agent = SpatialAnalysisAgent(
                 data_dir=self.data_dir,
                 model_name="gpt-4o",  # Using GPT-4o for best code generation
                 openai_api_key=self.openai_api_key,
-                system_prompt=self.zero_shot_prompt
+                system_prompt=self.improved_prompt
             )
 
             try:
@@ -89,23 +126,24 @@ Analyze the user's query, identify the spatial constraints, and write code that 
                     metrics = self.calculate_metrics(
                         generated_ids, ground_truth_ids)
                     metrics["query"] = query
-                    metrics["method"] = "zero-shot"
+                    metrics["method"] = "improved-zero-shot"
                     metrics["success"] = True
                     metrics["code"] = code
                     metrics["generated_ids"] = generated_ids
                     results.append(metrics)
 
                     # Log the results
-                    logger.info(f"Zero-shot metrics for query '{query[:30]}...': "
+                    logger.info(f"Improved zero-shot metrics for query '{query[:30]}...': "
                                 f"F1={metrics['f1_score']:.3f}, "
                                 f"Precision={metrics['precision']:.3f}, "
                                 f"Recall={metrics['recall']:.3f}")
                 else:
                     # Log the failure
-                    logger.warning(f"Zero-shot failed for query: {query}")
+                    logger.warning(
+                        f"Improved zero-shot failed for query: {query}")
                     results.append({
                         "query": query,
-                        "method": "zero-shot",
+                        "method": "improved-zero-shot",
                         "success": False,
                         "code": result["data"].get("code", "")
                     })
@@ -115,10 +153,10 @@ Analyze the user's query, identify the spatial constraints, and write code that 
 
             except Exception as e:
                 logger.error(
-                    f"Error in zero-shot evaluation for query {query}: {e}")
+                    f"Error in improved zero-shot evaluation for query {query}: {e}")
                 results.append({
                     "query": query,
-                    "method": "zero-shot",
+                    "method": "improved-zero-shot",
                     "success": False,
                     "error": str(e)
                 })
