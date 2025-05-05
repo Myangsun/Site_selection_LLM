@@ -1,0 +1,122 @@
+[
+  {
+    "query": "find commercial parcels within 500 meters of harvard square.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": ""
+  },
+  {
+    "query": "find parcels larger than 6000 square feet that are zoned for retail use.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": ""
+  },
+  {
+    "query": "find all parcels that have no more than 2 competing restaurants within 800 meters.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\n\n# Load the parcel data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\n\n# Load the POI data\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\n\n# Filter POI for restaurants\nrestaurants = poi[poi['category'] == 'restaurant']\n\n# Set the CRS to EPSG:26986 for accurate distance calculations\nparcels = parcels.to_crs(epsg=26986)\nrestaurants = restaurants.to_crs(epsg=26986)\n\n# Buffer the restaurants by 800 meters\nrestaurants_buffered = restaurants.buffer(800)\n\n# Spatial join to find parcels within 800 meters of restaurants\nparcels_within_800m = gpd.sjoin(parcels, restaurants_buffered, how='inner', op='intersects')\n\n# Count the number of restaurants within 800 meters for each parcel\nparcel_restaurant_counts = parcels_within_800m.groupby('ml').size()\n\n# Filter parcels with no more than 2 restaurants within 800 meters\neligible_parcels = parcel_restaurant_counts[parcel_restaurant_counts <= 2].index\n\n# Get the final list of parcel IDs\nfinal_parcels = parcels[parcels['ml'].isin(eligible_parcels)]\n\n# Sort the parcel IDs\nsorted_parcel_ids = sorted(final_parcels['ml'])\n\n# Print the final list of parcel IDs\nprint(sorted_parcel_ids)"
+  },
+  {
+    "query": "find the top 20 parcels in cambridge with the most diverse mix of residential and commercial land uses within 500 meters.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\nfrom shapely.geometry import Point\n\n# Load data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson').to_crs(epsg=26986)\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson').to_crs(epsg=26986)\n\n# Filter POIs for residential and commercial categories\nresidential_poi = poi[poi['category'].str.contains('residential', case=False)]\ncommercial_poi = poi[poi['category'].str.contains('commercial', case=False)]\n\n# Buffer parcels by 500 meters\nparcels['geometry'] = parcels.geometry.buffer(500)\n\n# Spatial join to find parcels with residential and commercial POIs within 500 meters\nresidential_join = gpd.sjoin(parcels, residential_poi, how='inner', op='intersects')\ncommercial_join = gpd.sjoin(parcels, commercial_poi, how='inner', op='intersects')\n\n# Count unique residential and commercial POIs for each parcel\nresidential_counts = residential_join.groupby('index_left').size().rename('res_count')\ncommercial_counts = commercial_join.groupby('index_left').size().rename('com_count')\n\n# Merge counts back to parcels\nparcels = parcels.join(residential_counts, on=parcels.index)\nparcels = parcels.join(commercial_counts, on=parcels.index)\n\n# Fill NaN values with 0\nparcels['res_count'] = parcels['res_count'].fillna(0)\nparcels['com_count'] = parcels['com_count'].fillna(0)\n\n# Calculate diversity score as the product of residential and commercial counts\nparcels['diversity_score'] = parcels['res_count'] * parcels['com_count']\n\n# Sort parcels by diversity score and select top 20\ntop_parcels = parcels.sort_values(by='diversity_score', ascending=False).head(20)\n\n# Print the list of parcel IDs\nprint(top_parcels['ml'].tolist())"
+  },
+  {
+    "query": "find the top 20 commercial parcels in areas with the highest percentage of residents with advanced degrees.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\nimport pandas as pd\n\n# Load data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\ncensus = gpd.read_file('../data/cambridge_census_cambridge_pct.geojson')\n\n# Ensure all data is in the same CRS\nparcels = parcels.to_crs(epsg=26986)\npoi = poi.to_crs(epsg=26986)\ncensus = census.to_crs(epsg=26986)\n\n# Filter census data for areas with the highest percentage of residents with advanced degrees\ncensus_sorted = census.sort_values(by='pct_advanced_degrees', ascending=False)\n\n# Select top areas based on advanced degrees\ntop_census_areas = census_sorted.head(20)\n\n# Spatial join to find parcels in top census areas\nparcels_in_top_areas = gpd.sjoin(parcels, top_census_areas, how='inner', op='intersects')\n\n# Filter parcels for commercial use\ncommercial_parcels = parcels_in_top_areas[parcels_in_top_areas['land_use'] == 'Commercial']\n\n# Sort parcels by the percentage of advanced degrees in their area\ncommercial_parcels_sorted = commercial_parcels.sort_values(by='pct_advanced_degrees', ascending=False)\n\n# Get the top 20 commercial parcels\ntop_20_commercial_parcels = commercial_parcels_sorted.head(20)\n\n# Extract and print the parcel IDs\ntop_20_parcel_ids = top_20_commercial_parcels['ml'].tolist()\nprint(top_20_parcel_ids)"
+  },
+  {
+    "query": "\u201cfind the top 20 parcels with the highest consumer spending in surrounding areas.\u201d",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\nimport pandas as pd\n\n# Load data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\ncensus = gpd.read_file('../data/cambridge_census_cambridge_pct.geojson')\nspending = pd.read_csv('../data/cambridge_spend_processed.csv')\n\n# Ensure all GeoDataFrames use the same CRS for spatial operations\nparcels = parcels.to_crs(epsg=26986)\npoi = poi.to_crs(epsg=26986)\ncensus = census.to_crs(epsg=26986)\n\n# Merge spending data with census data\ncensus_spending = census.merge(spending, left_on='GEOID', right_on='census_geoid')\n\n# Calculate total spending per census tract\ncensus_spending['total_spending'] = census_spending['spending'].sum()\n\n# Spatial join to find parcels within each census tract\nparcels_with_spending = gpd.sjoin(parcels, census_spending, how='left', op='intersects')\n\n# Group by parcel and sum the spending from surrounding areas\nparcel_spending = parcels_with_spending.groupby('ml')['total_spending'].sum().reset_index()\n\n# Sort parcels by total spending and select top 20\ntop_parcels = parcel_spending.sort_values(by='total_spending', ascending=False).head(20)\n\n# Print the list of top parcel IDs\nprint(top_parcels['ml'].tolist())"
+  },
+  {
+    "query": "find vacant commercial parcels larger than 3000 square feet that are within 800 meters of a subway station.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\n\n# Load the parcel data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\n\n# Load the POI data\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\n\n# Filter POI to only include subway stations\nsubway_stations = poi[poi['type'] == 'subway_station']\n\n# Set the CRS to EPSG:26986 for accurate distance calculations\nparcels = parcels.to_crs(epsg=26986)\nsubway_stations = subway_stations.to_crs(epsg=26986)\n\n# Filter parcels to only include vacant commercial parcels larger than 3000 square feet\nvacant_commercial_parcels = parcels[(parcels['use'] == 'commercial') & \n                                    (parcels['status'] == 'vacant') & \n                                    (parcels['area'] > 3000)]\n\n# Perform a spatial join to find parcels within 800 meters of a subway station\nbuffered_stations = subway_stations.buffer(800)\nparcels_within_800m = vacant_commercial_parcels[vacant_commercial_parcels.intersects(buffered_stations.unary_union)]\n\n# Extract and sort the parcel IDs\nparcel_ids = parcels_within_800m['ml'].sort_values()\n\n# Print the final list of parcel IDs\nprint(parcel_ids.tolist())"
+  },
+  {
+    "query": "find commercial parcels zoned for retail use with fewer than 3 competing retail businesses within 300 meters.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\n\n# Load the parcel data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\n\n# Load the POI data\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\n\n# Filter parcels for commercial parcels zoned for retail use\ncommercial_parcels = parcels[parcels['zoning'] == 'Retail']\n\n# Project both GeoDataFrames to EPSG:26986 for accurate distance calculations\ncommercial_parcels = commercial_parcels.to_crs(epsg=26986)\npoi = poi.to_crs(epsg=26986)\n\n# Filter POIs for retail businesses\nretail_poi = poi[poi['category'] == 'Retail']\n\n# Function to count competing businesses within 300 meters\ndef count_competing_businesses(parcel):\n    buffer = parcel.geometry.buffer(300)\n    competing_businesses = retail_poi[retail_poi.intersects(buffer)]\n    return len(competing_businesses)\n\n# Apply the function to each parcel\ncommercial_parcels['competing_businesses'] = commercial_parcels.apply(count_competing_businesses, axis=1)\n\n# Filter parcels with fewer than 3 competing businesses\nsuitable_parcels = commercial_parcels[commercial_parcels['competing_businesses'] < 3]\n\n# Sort the parcels by parcel ID (ml column)\nsorted_parcels = suitable_parcels.sort_values(by='ml')\n\n# Extract the list of parcel IDs\nparcel_ids = sorted_parcels['ml'].tolist()\n\n# Print the final list of parcel IDs\nprint(parcel_ids)"
+  },
+  {
+    "query": "find the top 20 commercial parcels within 1km of massachusetts avenue, prioritizing areas with higher consumer spending.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\nimport pandas as pd\n\n# Load data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\ncensus = gpd.read_file('../data/cambridge_census_cambridge_pct.geojson')\nspending = pd.read_csv('../data/cambridge_spend_processed.csv')\n\n# Ensure all GeoDataFrames use the same CRS for spatial operations\nparcels = parcels.to_crs(epsg=26986)\npoi = poi.to_crs(epsg=26986)\ncensus = census.to_crs(epsg=26986)\n\n# Filter POI for Massachusetts Avenue\nmass_ave_poi = poi[poi['name'].str.contains('Massachusetts Avenue', case=False, na=False)]\n\n# Buffer POI to 1km and dissolve into a single geometry\nmass_ave_buffer = mass_ave_poi.buffer(1000).unary_union\n\n# Filter parcels within 1km of Massachusetts Avenue\nparcels_within_1km = parcels[parcels.intersects(mass_ave_buffer)]\n\n# Merge parcels with spending data\nparcels_with_spending = parcels_within_1km.merge(spending, left_on='census_tract', right_on='census_tract')\n\n# Sort parcels by consumer spending in descending order\nsorted_parcels = parcels_with_spending.sort_values(by='consumer_spending', ascending=False)\n\n# Select top 20 commercial parcels\ntop_20_parcels = sorted_parcels[sorted_parcels['land_use'] == 'commercial'].head(20)\n\n# Extract and print the list of parcel IDs\nparcel_ids = top_20_parcels['ml'].tolist()\nprint(parcel_ids)"
+  },
+  {
+    "query": "find commercial parcels larger than 8000 square feet in census tracts with at least 90% of residents aged 18-64.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": ""
+  },
+  {
+    "query": "find commercial parcels that are between 5000-10000 square feet, within 500 meters of a subway station, and have no more than 1 competitor within 500 meters.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": ""
+  },
+  {
+    "query": "find parcels that are zoned for mixed-use, within 400 meters of public transportation, and at least 200 meters away from industrial areas.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\n\n# Load data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\ncensus = gpd.read_file('../data/cambridge_census_cambridge_pct.geojson')\n\n# Project data to EPSG:26986 for accurate distance calculations\nparcels = parcels.to_crs(epsg=26986)\npoi = poi.to_crs(epsg=26986)\ncensus = census.to_crs(epsg=26986)\n\n# Filter parcels for mixed-use zoning\nmixed_use_parcels = parcels[parcels['zoning'] == 'mixed-use']\n\n# Filter POIs for public transportation\npublic_transport_poi = poi[poi['type'] == 'public_transport']\n\n# Buffer public transport POIs by 400 meters\npublic_transport_buffer = public_transport_poi.buffer(400)\n\n# Find parcels within 400 meters of public transportation\nparcels_near_transport = mixed_use_parcels[mixed_use_parcels.geometry.apply(\n    lambda x: public_transport_buffer.intersects(x).any())]\n\n# Filter census data for industrial areas\nindustrial_areas = census[census['land_use'] == 'industrial']\n\n# Buffer industrial areas by 200 meters\nindustrial_buffer = industrial_areas.buffer(200)\n\n# Find parcels at least 200 meters away from industrial areas\nsuitable_parcels = parcels_near_transport[parcels_near_transport.geometry.apply(\n    lambda x: not industrial_buffer.intersects(x).any())]\n\n# Extract and sort parcel IDs\nparcel_ids = suitable_parcels['ml'].sort_values().tolist()\n\n# Print the final list of parcel IDs\nprint(parcel_ids)"
+  },
+  {
+    "query": "find retail parcels between 2000-5000 square feet within 500m of a residential area, prioritizing locations with high foot traffic and in census tracts with median income above $30,000.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": ""
+  },
+  {
+    "query": "find office parcels larger than 5000 square feet with at least 2 parking spaces, prioritizing those in areas with high educational attainment.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": ""
+  },
+  {
+    "query": "find parcels that are either commercial places within 100m of harvard square or residential larger than 5000 square feet and within 200m of 50 restaurants.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\nfrom shapely.geometry import Point\n\n# Load data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\n\n# Set CRS to EPSG:26986 for accurate distance calculations\nparcels = parcels.to_crs(epsg=26986)\npoi = poi.to_crs(epsg=26986)\n\n# Define Harvard Square location\nharvard_square = Point(-71.1189, 42.3736)\nharvard_square = gpd.GeoSeries([harvard_square], crs='EPSG:4326').to_crs(epsg=26986)\n\n# Filter POI for restaurants\nrestaurants = poi[poi['category'] == 'restaurant']\n\n# Find parcels that are commercial and within 100m of Harvard Square\ncommercial_near_harvard = parcels[\n    (parcels['land_use'] == 'commercial') &\n    (parcels.geometry.distance(harvard_square.iloc[0]) <= 100)\n]\n\n# Find parcels that are residential, larger than 5000 sqft, and within 200m of 50 restaurants\nresidential_large_near_restaurants = parcels[\n    (parcels['land_use'] == 'residential') &\n    (parcels['area'] > 5000)\n]\n\n# Buffer restaurants by 200m and count how many intersect each parcel\nrestaurants_buffered = restaurants.buffer(200)\nresidential_large_near_restaurants['restaurant_count'] = residential_large_near_restaurants.geometry.apply(\n    lambda x: sum(restaurants_buffered.intersects(x))\n)\n\n# Filter parcels with at least 50 restaurants within 200m\nresidential_large_near_restaurants = residential_large_near_restaurants[\n    residential_large_near_restaurants['restaurant_count'] >= 50\n]\n\n# Combine results\nselected_parcels = commercial_near_harvard.append(residential_large_near_restaurants)\n\n# Sort by parcel ID (ml column) and get the list\nselected_parcel_ids = selected_parcels['ml'].sort_values().tolist()\n\n# Print the final list of parcel IDs\nprint(selected_parcel_ids)"
+  },
+  {
+    "query": "find parcels that are zoned for retail and within 300m of a subway station and not within 100m of a competitor.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\n\n# Load the data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\n\n# Set the CRS to EPSG:26986 for accurate distance calculations\nparcels = parcels.to_crs(epsg=26986)\npoi = poi.to_crs(epsg=26986)\n\n# Filter parcels zoned for retail\nretail_parcels = parcels[parcels['zoning'] == 'Retail']\n\n# Filter POI for subway stations and competitors\nsubway_stations = poi[poi['type'] == 'Subway Station']\ncompetitors = poi[poi['type'] == 'Competitor']\n\n# Buffer the subway stations by 300m and competitors by 100m\nsubway_buffer = subway_stations.buffer(300)\ncompetitor_buffer = competitors.buffer(100)\n\n# Find parcels within 300m of a subway station\nparcels_near_subway = retail_parcels[retail_parcels.geometry.apply(lambda x: subway_buffer.intersects(x).any())]\n\n# Find parcels not within 100m of a competitor\nfinal_parcels = parcels_near_subway[~parcels_near_subway.geometry.apply(lambda x: competitor_buffer.intersects(x).any())]\n\n# Extract and sort the parcel IDs\nparcel_ids = sorted(final_parcels['ml'].tolist())\n\n# Print the final list of parcel IDs\nprint(parcel_ids)"
+  },
+  {
+    "query": "find parcels that are either office space larger than 10,000 sq ft or retail space within 500m of high-density residential areas.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\n\n# Load data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\ncensus = gpd.read_file('../data/cambridge_census_cambridge_pct.geojson')\n\n# Set CRS to EPSG:26986 for accurate distance calculations\nparcels = parcels.to_crs(epsg=26986)\npoi = poi.to_crs(epsg=26986)\ncensus = census.to_crs(epsg=26986)\n\n# Filter parcels for office space larger than 10,000 sq ft\noffice_parcels = parcels[(parcels['use'] == 'office') & (parcels['area'] > 10000)]\n\n# Filter POI for high-density residential areas\nhigh_density_residential = census[census['density'] > census['density'].quantile(0.75)]\n\n# Buffer high-density residential areas by 500 meters\nhigh_density_buffer = high_density_residential.buffer(500)\n\n# Find parcels that intersect with the high-density residential buffer\nretail_parcels = parcels[parcels['use'] == 'retail']\nretail_near_high_density = retail_parcels[retail_parcels.intersects(high_density_buffer.unary_union)]\n\n# Combine the two criteria\nselected_parcels = office_parcels.append(retail_near_high_density).drop_duplicates()\n\n# Sort by parcel ID (ml column)\nsorted_parcel_ids = selected_parcels['ml'].sort_values().tolist()\n\n# Print the final list of parcel IDs\nprint(sorted_parcel_ids)"
+  },
+  {
+    "query": "find commercial parcels that, if larger than 5000 sq ft, must be within 400m of public transit, or if smaller, must be within 200m of residential areas.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\n\n# Load data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\ncensus = gpd.read_file('../data/cambridge_census_cambridge_pct.geojson')\n\n# Filter POI for public transit\npublic_transit = poi[poi['type'] == 'public_transit']\n\n# Filter census for residential areas\nresidential_areas = census[census['land_use'] == 'residential']\n\n# Project to EPSG:26986 for accurate distance calculations\nparcels = parcels.to_crs(epsg=26986)\npublic_transit = public_transit.to_crs(epsg=26986)\nresidential_areas = residential_areas.to_crs(epsg=26986)\n\n# Spatial join to find parcels within 400m of public transit\nbuffer_400m = public_transit.buffer(400)\nparcels_near_transit = gpd.sjoin(parcels, gpd.GeoDataFrame(geometry=buffer_400m), op='intersects')\n\n# Spatial join to find parcels within 200m of residential areas\nbuffer_200m = residential_areas.buffer(200)\nparcels_near_residential = gpd.sjoin(parcels, gpd.GeoDataFrame(geometry=buffer_200m), op='intersects')\n\n# Filter parcels based on size and proximity criteria\nlarge_parcels = parcels[(parcels['land_use'] == 'commercial') & (parcels['area'] > 5000)]\nsmall_parcels = parcels[(parcels['land_use'] == 'commercial') & (parcels['area'] <= 5000)]\n\nlarge_parcels_near_transit = large_parcels[large_parcels.index.isin(parcels_near_transit.index)]\nsmall_parcels_near_residential = small_parcels[small_parcels.index.isin(parcels_near_residential.index)]\n\n# Combine results\nselected_parcels = large_parcels_near_transit.append(small_parcels_near_residential)\n\n# Sort and get parcel IDs\nsorted_parcel_ids = selected_parcels['ml'].sort_values().tolist()\n\n# Print the final list of parcel IDs\nprint(sorted_parcel_ids)"
+  },
+  {
+    "query": "find parcels that are: if zoned for commercial, must be larger than 8000 sq ft; if zoned for residential, must have less than 2 similar properties within 1000m",
+    "method": "few-shot-3",
+    "success": false,
+    "code": "import geopandas as gpd\n\n# Load data\nparcels = gpd.read_file('../data/cambridge_parcels.geojson')\npoi = gpd.read_file('../data/cambridge_poi_processed.geojson')\ncensus = gpd.read_file('../data/cambridge_census_cambridge_pct.geojson')\n\n# Set CRS to EPSG:26986 for accurate distance calculations\nparcels = parcels.to_crs(epsg=26986)\npoi = poi.to_crs(epsg=26986)\n\n# Filter parcels based on zoning and size\ncommercial_parcels = parcels[(parcels['zoning'] == 'commercial') & (parcels['area'] > 8000)]\n\n# Filter residential parcels based on proximity to similar properties\nresidential_parcels = parcels[parcels['zoning'] == 'residential']\n\n# Spatial join to find nearby residential parcels within 1000m\nresidential_buffer = residential_parcels.copy()\nresidential_buffer['geometry'] = residential_buffer.geometry.buffer(1000)\n\n# Spatial join to count similar properties within 1000m\njoined = gpd.sjoin(residential_buffer, residential_parcels, how='inner', op='intersects')\nsimilar_counts = joined.groupby('index_left').size()\n\n# Filter residential parcels with less than 2 similar properties within 1000m\nfiltered_residential = residential_parcels[similar_counts < 2]\n\n# Combine filtered commercial and residential parcels\nfiltered_parcels = commercial_parcels.append(filtered_residential)\n\n# Sort by parcel ID (ml column) and get the list\nsorted_parcel_ids = filtered_parcels['ml'].sort_values().tolist()\n\n# Print the final list of parcel IDs\nprint(sorted_parcel_ids)"
+  },
+  {
+    "query": "find mixed-use parcels that, if north of massachusetts avenue, must have retail on the ground floor, otherwise must have at least 3000 sq ft of commercial space.",
+    "method": "few-shot-3",
+    "success": false,
+    "code": ""
+  }
+]
