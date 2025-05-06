@@ -91,14 +91,14 @@ def run_method_evaluation(args):
 
     # Step 2: Run few-shot evaluation
     if "few-shot" in args.methods:
-        logger.info(f"Running few-shot evaluation with 3 examples...")
+        logger.info(f"Running few-shot evaluation with 5 examples...")
         from few_shot_evaluator import FewShotEvaluator
 
         # Initialize evaluator
         few_shot = FewShotEvaluator(args.data_dir, test_samples, data_files)
 
         # Run evaluation
-        results = few_shot.evaluate(samples, num_examples=3)
+        results = few_shot.evaluate(samples, num_examples=5)
 
         # Save results
         with open(os.path.join(args.output_dir, "few_shot_results.json"), 'w') as f:
@@ -109,74 +109,131 @@ def run_method_evaluation(args):
 
     # Step 3: Run fine-tuning if requested
     if "fine-tuned" in args.methods:
-        # ALWAYS use multi-turn format
-        logger.info(
-            "Running fine-tuning with multi-turn conversation format...")
-        from finetune_multi_turn import SpatialFineTuningHandler
+        # Check if we should skip fine-tuning
+        if args.skip_finetune:
+            # Try to get fine-tuned model from environment variable
+            fine_tuned_model = os.environ.get("FINE_TUNED_MODEL_NAME")
 
-        # Initialize fine-tuner
-        fine_tuner = SpatialFineTuningHandler(args.data_dir)
+            if fine_tuned_model:
+                logger.info(
+                    f"Skipping fine-tuning, using existing model: {fine_tuned_model}")
 
-        # Run fine-tuning pipeline
-        fine_tuning_result = fine_tuner.run_fine_tuning_pipeline(
-            output_dir=os.path.join(args.output_dir, "finetune_data"),
-            model="gpt-4o-mini-2024-07-18",
-            validation_split=0.2,
-            wait_for_completion=True
-        )
+                # Skip to evaluation with the existing model
+                from fine_tuned_evaluator import FineTunedEvaluator
 
-        # Save fine-tuning result
-        with open(os.path.join(args.output_dir, "fine_tuning_result.json"), 'w') as f:
-            # Convert non-serializable objects to strings
-            serializable_result = {}
-            for key, value in fine_tuning_result.items():
-                if isinstance(value, (dict, list, str, int, float, bool, type(None))):
-                    serializable_result[key] = value
-                else:
-                    serializable_result[key] = str(value)
+                # Initialize evaluator
+                fine_tuned_eval = FineTunedEvaluator(
+                    args.data_dir, test_samples, data_files)
 
-            json.dump(serializable_result, f, indent=2)
+                # Run evaluation
+                results = fine_tuned_eval.evaluate(samples, fine_tuned_model)
 
-        logger.info(
-            f"Fine-tuning information saved to {args.output_dir}/fine_tuning_result.json")
+                # Save results
+                with open(os.path.join(args.output_dir, "fine_tuned_results.json"), 'w') as f:
+                    json.dump(results, f, indent=2)
 
-        # Get fine-tuned model if available
-        fine_tuned_model = None
-        if isinstance(fine_tuning_result, dict) and 'status' in fine_tuning_result:
-            if isinstance(fine_tuning_result['status'], dict):
-                fine_tuned_model = fine_tuning_result['status'].get(
-                    'fine_tuned_model')
-            elif isinstance(fine_tuning_result['status'], str) and fine_tuning_result['status'] == "succeeded":
-                # If status is just a string success indicator, check for model directly
-                fine_tuned_model = fine_tuning_result.get('fine_tuned_model')
+                logger.info(
+                    f"Fine-tuned model evaluation complete. Results saved to {args.output_dir}/fine_tuned_results.json")
+            else:
+                logger.error(
+                    "No fine-tuned model found. Set the FINE_TUNED_MODEL_NAME environment variable.")
+        else:
 
-        if fine_tuned_model:
-            # Store the model ID for later use
-            os.environ["FINE_TUNED_MODEL_NAME"] = fine_tuned_model
+            # ALWAYS use multi-turn format
+            logger.info(
+                "Running fine-tuning with multi-turn conversation format...")
+            from finetune_multi_turn import SpatialFineTuningHandler
+
+            # Initialize fine-tuner
+            fine_tuner = SpatialFineTuningHandler(args.data_dir)
+
+            # Run fine-tuning pipeline
+            fine_tuning_result = fine_tuner.run_fine_tuning_pipeline(
+                output_dir=os.path.join(args.output_dir, "finetune_data"),
+                model="gpt-4o-2024-08-06",
+                validation_split=0.2,
+                wait_for_completion=True
+            )
+
+            # Save fine-tuning result
+            with open(os.path.join(args.output_dir, "fine_tuning_result.json"), 'w') as f:
+                # Convert non-serializable objects to strings
+                serializable_result = {}
+                for key, value in fine_tuning_result.items():
+                    if isinstance(value, (dict, list, str, int, float, bool, type(None))):
+                        serializable_result[key] = value
+                    else:
+                        serializable_result[key] = str(value)
+
+                json.dump(serializable_result, f, indent=2)
 
             logger.info(
-                f"Running evaluation with fine-tuned model: {fine_tuned_model}")
-            from fine_tuned_evaluator import FineTunedEvaluator
+                f"Fine-tuning information saved to {args.output_dir}/fine_tuning_result.json")
 
+            # Get fine-tuned model if available
+            fine_tuned_model = None
+            if isinstance(fine_tuning_result, dict) and 'status' in fine_tuning_result:
+                if isinstance(fine_tuning_result['status'], dict):
+                    fine_tuned_model = fine_tuning_result['status'].get(
+                        'fine_tuned_model')
+                elif isinstance(fine_tuning_result['status'], str) and fine_tuning_result['status'] == "succeeded":
+                    # If status is just a string success indicator, check for model directly
+                    fine_tuned_model = fine_tuning_result.get(
+                        'fine_tuned_model')
+
+            if fine_tuned_model:
+                # Store the model ID for later use
+                os.environ["FINE_TUNED_MODEL_NAME"] = fine_tuned_model
+
+                logger.info(
+                    f"Running evaluation with fine-tuned model: {fine_tuned_model}")
+                from fine_tuned_evaluator import FineTunedEvaluator
+
+                # Initialize evaluator
+                fine_tuned_eval = FineTunedEvaluator(
+                    args.data_dir, test_samples, data_files)
+
+                # Run evaluation
+                results = fine_tuned_eval.evaluate(samples, fine_tuned_model)
+
+                # Save results
+                with open(os.path.join(args.output_dir, "fine_tuned_results.json"), 'w') as f:
+                    json.dump(results, f, indent=2)
+
+                logger.info(
+                    f"Fine-tuned model evaluation complete. Results saved to {args.output_dir}/fine_tuned_results.json")
+
+                # Print the model ID for convenience
+                print(f"\nFine-tuned model ID: {fine_tuned_model}")
+                print("Use this ID with the agent implementation.")
+
+    # Step 4: Run fine-tuned RAG evaluation
+    if "fine-tuned-rag" in args.methods:
+        logger.info(f"Running fine-tuned RAG evaluation...")
+        from fine_tuned_rag_evaluator import FineTunedRAGEvaluator
+
+        # Get fine-tuned model if available
+        fine_tuned_model = os.environ.get("FINE_TUNED_MODEL_NAME")
+
+        if fine_tuned_model:
             # Initialize evaluator
-            fine_tuned_eval = FineTunedEvaluator(
+            fine_tuned_rag_eval = FineTunedRAGEvaluator(
                 args.data_dir, test_samples, data_files)
 
             # Run evaluation
-            results = fine_tuned_eval.evaluate(samples, fine_tuned_model)
+            results = fine_tuned_rag_eval.evaluate(samples, fine_tuned_model)
 
             # Save results
-            with open(os.path.join(args.output_dir, "fine_tuned_results.json"), 'w') as f:
+            with open(os.path.join(args.output_dir, "fine_tuned_rag_results.json"), 'w') as f:
                 json.dump(results, f, indent=2)
 
             logger.info(
-                f"Fine-tuned model evaluation complete. Results saved to {args.output_dir}/fine_tuned_results.json")
+                f"Fine-tuned RAG evaluation complete. Results saved to {args.output_dir}/fine_tuned_rag_results.json")
+        else:
+            logger.warning("No fine-tuned model available for RAG evaluation")
 
-            # Print the model ID for convenience
-            print(f"\nFine-tuned model ID: {fine_tuned_model}")
-            print("Use this ID with the agent implementation.")
 
-    # Step 4: Analyze results
+# Step 5: Analyze results
     logger.info("Analyzing results...")
     from result_analyzer import ResultAnalyzer
 
@@ -213,8 +270,13 @@ def main():
 
     # Methods to evaluate (simplified)
     parser.add_argument("--methods", nargs="+", default=["zero-shot", "few-shot", "fine-tuned"],
-                        choices=["zero-shot", "few-shot", "fine-tuned"],
+                        choices=["zero-shot", "few-shot",
+                                 "fine-tuned", "fine-tuned-rag"],
                         help="Methods to evaluate")
+
+    # Add to the argument parser in evaluate_methods.py
+    parser.add_argument("--skip-finetune", action="store_true",
+                        help="Skip the fine-tuning step and use existing model for evaluation")
 
     args = parser.parse_args()
 

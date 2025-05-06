@@ -1,4 +1,4 @@
 method,total_queries,successful,failed,success_rate,error_types
 zero_shot,20,0,20,0.0,{'Other error': 20}
 few_shot,20,0,20,0.0,{'Other error': 20}
-fine_tuned,20,2,18,0.1,{'Other error': 18}
+fine_tuned_rag,20,3,17,0.15,{'Other error': 17}

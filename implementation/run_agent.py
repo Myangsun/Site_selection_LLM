@@ -44,7 +44,7 @@ def run_agent(args):
 
     # Use the specified model or environment variable
     model_name = args.model or os.environ.get(
-        "FINE_TUNED_MODEL_NAME") or "gpt-4o"
+        "FINE_TUNED_MODEL_NAME")
     logger.info(f"Using model: {model_name}")
 
     # Export model name for interface to use

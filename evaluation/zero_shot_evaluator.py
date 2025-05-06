@@ -33,47 +33,41 @@ class ZeroShotEvaluator:
         self.openai_api_key = openai_api_key
 
         # Initialize with improved but minimal schema information
-        self.improved_prompt = """You are an expert in geospatial data analysis using Python. You translate natural language queries about site selection into Python code. You focus on generating concise, executable Python code without examples or explanations. Analyze the user's query, identify the spatial constraints, and write code that uses GeoPandas to find matching parcels.
+        self.improved_prompt = """You are an expert in geospatial data analysis using Python. ALWAYS use these EXACT field names:
 
-REQUIRED DATASET SCHEMA - USE THESE EXACT FIELD NAMES:
-1. Parcels ('cambridge_parcels.geojson'):
-   - 'ml': Parcel ID (string) - use this for the final result
-   - 'use_code': Land use code (NOT 'land_use' or 'zoning') for filtering property types
-   - 'land_area': Size in square feet (NOT 'area' or 'size')
-   
-   Filtering parcels by type:
-   - Commercial parcels: parcels[parcels['use_code'].astype(str).isin(['300', '302', '316', '323', '324', '325', '326', '327', '330', '332', '334', '340', '341', '343', '345', '346', '353', '362', '375', '404', '406', '0340', '0406'])]
-   - Retail parcels: parcels[parcels['use_code'].astype(str).isin(['323', '324', '325', '326', '327', '330'])]
-   - Office parcels: parcels[parcels['use_code'].astype(str).isin(['340', '341', '343', '345', '346'])]
-   - Mixed-use parcels: parcels[parcels['use_code'].astype(str).isin(['0101', '0104', '0105', '0111', '0112', '0121', '013', '031', '0340', '0406', '041', '0942'])]
-   - Residential parcels: parcels[parcels['use_code'].astype(str).isin(['101', '1014', '102', '1028', '104', '105', '109', '1094', '1095', '1098', '111', '112', '113', '114', '121', '970', '9700', '9421'])]
+PARCELS DATASET (cambridge_parcels.geojson):
+  - 'ml': Parcel ID (string) - ALWAYS use this for final results
+  - 'use_code': Land use code (string) - NEVER use 'land_use' or 'zoning'
+  - 'land_area': Size in square feet (numeric) - NEVER use 'area' or 'size'
+  - 'geometry': Spatial geometry (GeoSeries)
 
-2. POI ('cambridge_poi_processed.geojson'):
-   - 'business_type': Type of business (NOT 'category', 'type', or 'name')
-   
-   Filtering POI by type:
-   - Restaurants: poi[poi['business_type'] == 'restaurant']
-   - Subway stations: Define manually using Point coordinates
-   
-3. Census ('cambridge_census_cambridge_pct.geojson'):
-   - 'pct_adv_deg': % with advanced degrees (NOT 'pct_advanced_degrees')
-   - 'pct_18_64': % aged 18-64
-   - 'median_income': Median income
+POI DATASET (cambridge_poi_processed.geojson):
+  - 'business_type': Type of business/POI - NEVER use 'category', 'type', or 'name'
+  - 'geometry': Spatial location
+  - 'PLACEKEY': Identifier for joining with spending data
 
-4. Spending ('cambridge_spend_processed.csv'):
-   - 'PLACEKEY': Join key with POI data
-   - 'RAW_TOTAL_SPEND': Consumer spending amount
+COMMERCIAL USE CODES - ALWAYS use these exact codes:
+  - Commercial: '300', '302', '316', '323', '324', '325', '326', '327', '330', '332', '334', '340', '341', '343', '345', '346', '353', '362', '375', '404', '406', '0340', '0406'
+  - Retail: '323', '324', '325', '326', '327', '330'
+  - Office: '340', '341', '343', '345', '346'
+  - Mixed-use: '0101', '0104', '0105', '0111', '0112', '0121', '013', '031', '0340', '0406', '041', '0942'
 
-For spatial operations:
-1. Project to EPSG:26986: dataset = dataset.to_crs(epsg=26986)
-2. For subway stations, define using these coordinates:
-   harvard_square = Point(-71.1189, 42.3736)
-   central_square = Point(-71.1031, 42.3656)
-   kendall_mit = Point(-71.0865, 42.3625)
-   porter_square = Point(-71.1226, 42.3782)
-   alewife = Point(-71.1429, 42.3954)
+ALWAYS project to EPSG:26986 for accurate distance calculations:
+  parcels_proj = parcels.to_crs(epsg=26986)
 
-Always use the exact field names specified above. Return a sorted list of parcel IDs ('ml' values)."""
+SUBWAY STATIONS - Define with these exact coordinates:
+  harvard_square = Point(-71.1189, 42.3736)
+  central_square = Point(-71.1031, 42.3656)
+  kendall_mit = Point(-71.0865, 42.3625)
+  porter_square = Point(-71.1226, 42.3782)
+  alewife = Point(-71.1429, 42.3954)
+
+ALWAYS STRUCTURE CODE IN THIS ORDER:
+1. Load data files
+2. Project to EPSG:26986
+3. Filter datasets using appropriate columns
+4. Perform spatial operations
+5. Return sorted list of parcel IDs (ml column)Return a sorted list of parcel IDs ('ml' values)."""
 
         logger.info(
             "Improved Zero-Shot evaluator initialized with basic schema information")

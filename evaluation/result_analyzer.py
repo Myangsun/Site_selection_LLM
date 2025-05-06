@@ -44,7 +44,8 @@ class ResultAnalyzer:
             method_files = {
                 "zero_shot": "zero_shot_results.json",
                 "few_shot": "few_shot_results.json",
-                "fine_tuned": "fine_tuned_results.json"
+                "fine_tuned": "fine_tuned_results.json",
+                "fine_tuned_rag": "fine_tuned_rag_results.json"  # Add this line
             }
 
             for method, filename in method_files.items():

@@ -1,12 +1,12 @@
 {
-  "fine_tuned": {
+  "fine_tuned_rag": {
     "total_queries": 20,
-    "successful_queries": 2,
-    "success_rate": 0.1,
-    "avg_precision": 1.0,
+    "successful_queries": 3,
+    "success_rate": 0.15,
+    "avg_precision": 0.6810035842293907,
     "avg_recall": 1.0,
-    "avg_f1_score": 1.0,
-    "avg_exact_match": 1.0,
-    "avg_result_match_rate": 1.0
+    "avg_f1_score": 0.6941580756013747,
+    "avg_exact_match": 0.6666666666666666,
+    "avg_result_match_rate": 0.6810035842293907
   }
 }

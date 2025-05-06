@@ -1,3 +1,4 @@
 method,query,lines_of_code,characters,functions,f1_score
-fine_tuned,find commercial parcels within 500 meters of harvard square.,33,1527,0,1.0
-fine_tuned,find parcels larger than 6000 square feet that are zoned for retail use.,14,574,0,1.0
+fine_tuned_rag,find parcels larger than 6000 square feet that are zoned for retail use.,14,587,0,1.0
+fine_tuned_rag,find all parcels that have no more than 2 competing restaurants within 800 meters.,29,1361,1,1.0
+fine_tuned_rag,find commercial parcels zoned for retail use with fewer than 3 competing retail businesses within 300 meters.,33,1584,1,0.08247422680412372

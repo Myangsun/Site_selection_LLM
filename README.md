@@ -52,6 +52,13 @@ python evaluate_methods.py --sample_size 5
 
 # Specify data and output directories
 python evaluate_methods.py --data_dir ../data --output_dir ../results
+
+# Run evaluation with the fine-tuned model, skipping the fine-tuning step
+python evaluate_methods.py --methods fine-tuned --skip-finetune
+
+# Run evaluation with the fine-tuned RAG model
+python evaluate_methods.py --methods fine-tuned-rag
+
 ```
 
 The fine-tuning process will automatically detect whether to use the multi-turn conversation format based on the dataset.

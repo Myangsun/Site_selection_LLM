@@ -384,11 +384,11 @@ class SpatialFineTuningHandler:
     def start_fine_tuning(self,
                           training_file_id: str,
                           validation_file_id: Optional[str] = None,
-                          model: str = "gpt-4o-mini-2024-07-18",
+                          model: str = "gpt-4o-2024-08-06",
                           suffix: str = "spatial-agent",
-                          n_epochs: Optional[int] = None,
-                          batch_size: Optional[int] = None,
-                          learning_rate_multiplier: Optional[float] = None) -> str:
+                          n_epochs: Optional[int] = 3,
+                          batch_size: Optional[int] = 16,
+                          learning_rate_multiplier: Optional[float] = 0.08) -> str:
         """
         Start a fine-tuning job with OpenAI.
 
@@ -509,7 +509,7 @@ class SpatialFineTuningHandler:
     def run_fine_tuning_pipeline(self,
                                  output_dir: str,
                                  format_type: str = "standard",
-                                 model: str = "gpt-4o-mini-2024-07-18",
+                                 model: str = "gpt-4o-2024-08-06",
                                  suffix: Optional[str] = None,
                                  validation_split: float = 0.2,
                                  wait_for_completion: bool = True) -> Dict[str, Any]:
