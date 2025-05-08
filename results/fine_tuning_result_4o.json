@@ -1,0 +1,10 @@
+{
+  "status": {
+    "id": "ftjob-PHwmBWGYMZ7PjZaa9QzhVbB8",
+    "status": "succeeded",
+    "fine_tuned_model": "ft:gpt-4o-mini-2024-07-18:mit:spatial-agent-20250508-024125:BUpW6xog",
+    "created_at": 1746686549,
+    "finished_at": 1746687568
+  },
+  "error": "Error code: 400 - {'error': {'message': 'Model standard is not available for fine-tuning or does not exist.', 'type': 'invalid_request_error', 'param': None, 'code': 'model_not_available'}}"
+}

@@ -1,0 +1,787 @@
+﻿{
+    "Query": "find parcels larger than 12000 sq ft, zoned for retail, and located in areas with high consumer spending (top 20% of cambridge neighborhoods)",
+    "Code": "import geopandas as gpd\nimport pandas as pd\n# Load data\nparcels = gpd.read_file('data/cambridge_parcels.geojson')\npoi = gpd.read_file('data/cambridge_poi_processed.geojson')\ncensus = gpd.read_file('data/cambridge_census_cambridge_pct.geojson')\nspend_data = pd.read_csv('data/cambridge_spend_processed.csv')\n# Define retail use codes\nretail_use_codes = ['323', '324', '325', '326', '327', '330']\n# Convert to projected CRS for accurate analysis\nparcels_proj = parcels.to_crs(epsg=26986)\n# Filter for retail parcels\nretail_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(retail_use_codes)].copy()\n# Filter for large retail parcels (>12000 sq ft)\nlarge_retail_parcels = retail_parcels[retail_parcels['land_area'] > 12000].copy()\n# Combine POI and spending data\npoi_with_spend = poi.merge(\n    spend_data,\n    left_on='PLACEKEY',\n    right_on='PLACEKEY',\n    how='left'\n)\n# Fill NaN values in spending with 0\nif 'RAW_TOTAL_SPEND' in poi_with_spend.columns:\n    poi_with_spend['RAW_TOTAL_SPEND'] = poi_with_spend['RAW_TOTAL_SPEND'].fillna(0)\nelse:\n    poi_with_spend['RAW_TOTAL_SPEND'] = 0\n# Convert to projected CRS\npoi_with_spend_proj = poi_with_spend.to_crs(epsg=26986)\n# Spatial join: assign spending to nearby parcels\ndef assign_spending(parcel_geom, poi_geoms, poi_spend, radius=100):  # 100m radius\n    # Find POI within radius\n    buffered_geom = parcel_geom.buffer(radius)\n    nearby_poi = poi_geoms[buffered_geom.contains(poi_geoms)]\n    \n    if nearby_poi.empty:\n        return 0  # No nearby POI, return 0 spend\n    \n    # Get spend values for nearby POI\n    spend_values = []\n    for idx in nearby_poi.index:\n        spend = poi_spend[poi_geoms.index == idx].values\n        spend_values.append(spend[0] if spend.size > 0 else 0)\n    \n    # Average spend from nearby POI\n    return sum(spend_values) / len(spend_values)\n# Calculate spending for each large retail parcel\nlarge_retail_parcels.loc[:, 'estimated_spending'] = large_retail_parcels.geometry.apply(\n    lambda geom: assign_spending(geom, poi_with_spend_proj.geometry, \n                                  poi_with_spend_proj['RAW_TOTAL_SPEND'])\n)\n# Sort by estimated spending (higher is better)\nresult_parcels = large_retail_parcels.sort_values('estimated_spending', ascending=False)\n# Convert back to original CRS\nresult_ids = result_parcels['ml'].tolist()\n# Print results\nprint(f\"Found {len(result_parcels)} parcels matching criteria\")\nprint(f\"Parcel IDs (high spend): {result_ids}\")",
+    "Answer": "[]",
+  },
+
+
+
+
+
+
+
+
+{
+    "Query": "parcels with mixed-use code OR near public transport AND NOT in high-density industrial areas",
+    "Code": "import geopandas as gpd
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+poi = gpd.read_file('data/cambridge_poi_processed.geojson')
+census = gpd.read_file('data/cambridge_census_cambridge_pct.geojson')
+# Project to CRS
+cambridge_crs = 26986
+parcels_proj = parcels.to_crs(cambridge_crs)
+poi_proj = poi.to_crs(cambridge_crs)
+census_proj = census.to_crs(cambridge_crs)
+# Mixed-use codes
+mixed_use_codes = ['300', '302', '316', '323', '324', '325', '326', '327', '330', '332', '334', '340', '341', '343', '345', '346', '353', '362', '375']
+mixed_use_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(mixed_use_codes)]
+# Bus stop locations
+bus_stops = [
+    (42.365486, -71.103802),
+    (42.373362, -71.118956),
+    (42.362490, -71.086176),
+    (42.38469, -71.10316),
+    (42.3625, -71.0942)
+]
+bus_stops_geom = gpd.GeoDataFrame(
+    bus_stops,
+    columns=['lat', 'lon'],
+    geometry=gpd.points_from_xy([-x[1] for x in bus_stops], [x[0] for x in bus_stops]),
+    crs=parcels.crs
+)
+bus_stops_proj = bus_stops_geom.to_crs(epsg=cambridge_crs)
+bus_buffer = [geom.buffer(500) for geom in bus_stops_proj.geometry]
+bus_union_buffer = gpd.GeoSeries(bus_buffer).unary_union
+near_bus_parcels = parcels_proj[parcels_proj.geometry.intersects(bus_union_buffer)]
+# Industrial exclusion
+high_density_industrial_codes = ['340', '341', '343', '345', '346']
+high_industrial_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(high_density_industrial_codes)]
+# Combine
+mixed_use_ids = mixed_use_parcels['ml'].tolist()
+near_bus_ids = near_bus_parcels['ml'].tolist()
+condition_a_ids = list(set(mixed_use_ids) | set(near_bus_ids))
+condition_a_parcels = parcels_proj[parcels_proj['ml'].isin(condition_a_ids)]
+condition_b_parcels = condition_a_parcels[~condition_a_parcels['ml'].isin(high_industrial_parcels['ml'])]
+final_parcels = condition_b_parcels.sort_values('ml')
+final_parcels = final_parcels.to_crs(parcels.crs)
+result_ids = final_parcels['ml'].tolist()
+print(f"Found {len(final_parcels)} parcels meeting criteria")
+print(f"Parcel IDs: {result_ids}")
+",
+    "Answer": "['100-62', '100-68', '100-86', '102-46', '105-53', '105-68', '105-82', '106-109', '106-117', '106-124', '107-117', '107-8', '107-9', '108-54', '108-80', '109-50', '110-63', '110-91', '114A-120', '116-100', '116-12', '116-94', '118-67', '119-90', '120-48', '122-12', '125-73', '125-80', '126-131', '126-27', '127-139', '128-63', '128-72', '129-55', '133-12', '133-36', '133-48', '133-52', '134-33', '134-7', '136-15', '139-83', '140-148', '141-80', '142-43', '142-44', '150-114', '152-25', '154-101', '154-111', '154-89', '154-97', '154-98', '155-42', '156-25', '157-26', '159-2', '16-11', '160-63', '160-66', '160-76', '160-83', '160-84', '160-85', '162-18', '162-19', '162-26', '162-29', '162-54', '165-34', '166-106', '166-13', '169-100', '169-46', '169-47', '169-67', '169-68', '169-7', '169-86', '170-39', '173-65', '174-27', '174-30', '174-33', '174-36', '174-37', '174-73', '175-37', '175-75', '175-84', '176-15', '176-64', '177-34', '178-118', '178-21', '178-43', '178-79', '179-75', '179-87', '18-64', '18-65', '180-57', '181-80', '182-88', '182-89', '182-90', '183-100', '184-109', '184-159', '184-191', '184-193', '184-31', '186-85', '186-96', '189-4', '189-72', '189-88', '19-10', '191-65', '191-85', '192-121', '192-156', '192-177', '194-68', '195-59', '196-123', '196-154', '198-28', '199-30', '199-31', '199-67', '199-90', '1A-189', '1A-192', '1A-211', '20-75', '20-82', '20-83', '20-92', '200-22', '200-79', '21-121', '21-124', '21-16', '219-37', '22-109', '226-46', '228-33', '228-55', '229-117', '229-131', '229-135', '23-146', '23-156', '230-116', '230-41', '230-71', '230-97', '231-27', '233-147', '233-175', '234-178', '234-193', '236-146', '236-84', '236-95', '242B-998', '248-82', '251-221', '252-114', '252-147', '252-158', '252-172', '254-76', '254-78', '254-82', '255-21', '260-32', '260-46', '260-73', '260-74', '260-76', '261-112', '261-6', '261-7', '265A-35', '265A-39', '265A-43', '265A-46', '265A-7', '265B-26', '265B-28', '265B-61', '265C-25', '267.2-264', '267.3-278', '267.4-209', '267.4-247', '267.4-284', '267.4-295', '267.4-296', '267D-256', '267D-259', '267D-325', '267E-234', '267E-244', '268B-15', '268B-8', '271-32', '273-2', '273-20', '273-35', '34-28', '34-8', '35-34', '35-36', '36-137', '36-164', '36-189', '37-20', '39-179', '42-13', '42-33', '42-81', '42-91', '43-71', '44-106', '48-158', '63-131', '63-134', '69-161', '69-162', '69-62', '7-115', '7-31', '7-34', '7-35', '7-37', '70-90', '70-91', '70-92', '74-1', '74-6', '74-8', '75-128', '75-170', '79-22', '8-88', '81-100', '81-104', '81-21', '81-3', '81-50', '82-31', '82-57', '83-15', '83-80', '83-90', '83-98', '83-99', '84-101', '84-12', '84-85', '84-91', '85-66', '86-84', '88-45', '88-48', '9-31', '9-61', '90-125', '90-127', '90-155', '90-162', '90-18', '91-191', '91-52', '91-7', '91-70', '91-81', '92-88', '93-76', '93-78', '93-79', '93-80', '94-7', '96-152', '97-111', '99-51']",
+    "Category": "Complex_Constraints",
+    "Subcategory": "Logical Combinations"
+  },
+
+
+
+
+
+
+{
+    "Query": "find commercial parcels larger than 10000 sq ft, within 300 meters of a subway station, and in areas near university",
+    "Code": "import geopandas as gpd
+import pandas as pd
+from shapely.geometry import Point
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+poi = gpd.read_file('data/cambridge_poi_processed.geojson')
+census = gpd.read_file('data/cambridge_census_cambridge_pct.geojson')
+
+
+# Project to metric CRS for accurate distance measurement
+parcels_proj = parcels.to_crs(epsg=26986)
+poi_proj = poi.to_crs(epsg=26986)
+
+
+# Define commercial use codes
+commercial_use_codes = [
+    '300', '301', '302', '303', '304', '305', '310', '311', '312', '313',
+    '320', '321', '322', '323', '324', '325', '326', '327', '328', '329',
+    '330', '331', '332', '333', '334', '335', '336', '337', '338', '339',
+    '340', '341', '342', '343', '344', '345', '346', '347', '348', '349',
+    '350', '351', '352', '353', '354', '355', '356', '357', '358', '359'
+]
+
+
+# Filter for commercial parcels
+commercial_parcels = parcels_proj[parcels_proj['use_code'].astype(str).str.startswith(('3', '4'))].copy()
+
+
+# Filter for parcels larger than 10000 sq ft
+large_commercial_parcels = commercial_parcels[commercial_parcels['land_area'] > 10000].copy()
+
+
+# Define subway station locations from POI data
+subway_stations = poi_proj[poi_proj['business_type'] == 'Subway Station'].copy()
+
+
+# If subway stations are not available in POI, define them manually
+if len(subway_stations) == 0:
+    subway_stations_coords = [
+        Point(-71.1189, 42.3736),  # Harvard Square
+        Point(-71.1031, 42.3656),  # Central Square
+        Point(-71.0865, 42.3625),  # Kendall/MIT
+        Point(-71.1226, 42.3782),  # Porter Square
+        Point(-71.1429, 42.3954)   # Alewife
+    ]
+    subway_stations = gpd.GeoDataFrame(geometry=subway_stations_coords, crs=parcels.crs)
+    subway_stations = subway_stations.to_crs(epsg=26986)
+
+
+# Create 300m buffer around subway stations
+subway_buffers = [geom.buffer(300) for geom in subway_stations.geometry]
+union_subway_buffer = gpd.GeoSeries(subway_buffers).unary_union
+
+
+# Find commercial parcels within 300m of subway stations
+parcels_near_subway = large_commercial_parcels[large_commercial_parcels.geometry.intersects(union_subway_buffer)].copy()
+
+
+# Identify university locations from POI data
+universities = poi_proj[poi_proj['business_type'].str.contains('University|College|Campus', 
+                                                            case=False, 
+                                                            na=False)].copy()
+
+
+# If universities are not available in POI, define them manually
+if len(universities) == 0:
+    university_coords = [
+        Point(-71.1167, 42.3770),  # Harvard University
+        Point(-71.0922, 42.3604),  # MIT
+        Point(-71.1211, 42.3767),  # Lesley University
+        Point(-71.1046, 42.3770)    # Harvard Law School
+    ]
+    universities = gpd.GeoDataFrame(geometry=university_coords, crs=parcels.crs)
+    universities = universities.to_crs(epsg=26986)
+
+
+# Create buffer around universities (500m as a reasonable proximity)
+university_buffers = [geom.buffer(500) for geom in universities.geometry]
+union_university_buffer = gpd.GeoSeries(university_buffers).unary_union
+
+
+# Find parcels that are near both subway stations and universities
+result_parcels = parcels_near_subway[parcels_near_subway.geometry.intersects(union_university_buffer)].copy()
+
+
+# Convert back to original CRS
+result_parcels = result_parcels.to_crs(parcels.crs)
+
+
+# Sort by parcel ID for consistency
+result_parcels = result_parcels.sort_values('ml')
+
+
+# Output results
+result_ids = result_parcels['ml'].tolist()
+print(f"Found {len(result_parcels)} commercial parcels > 10000 sq ft within 300m of subway stations and near universities")
+print(f"Parcel IDs: {result_ids}")
+",
+    "Answer": " ['160-11', '160-14', '160-48', '160-57', '160-69', '162-54', '165-34', '165-57', '168-13', '168-22', '168-33', '168-36', '168-60', '169-100', '169-102', '169-42', '169-46', '169-84', '169-98', '169-99', '170-39', '172-29', '43-71', '43-73', '43-76', '43-77', '44-104', '44-105', '44-99', '48-158']",
+    "Category": "Complex_Constraints",
+    "Subcategory": "Multiple Hard Constraints"
+  },
+
+
+
+
+
+
+{
+    "Query": " find retail parcels (use_code indicating retail) that are not within 400m of any competitor, with land area between 6000-12000 sq ft",
+    "Code": "import geopandas as gpd
+import pandas as pd
+from shapely.geometry import Point
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+poi = gpd.read_file('data/cambridge_poi_processed.geojson')
+census = gpd.read_file('data/cambridge_census_cambridge_pct.geojson')
+
+
+# Project to metric CRS for accurate distance measurement
+parcels_proj = parcels.to_crs(epsg=26986)
+poi_proj = poi.to_crs(epsg=26986)
+
+
+# Define retail use codes
+retail_use_codes = [
+    '323', '324', '325', '326', '327',  # Retail stores
+    '332', '334',  # Department stores
+    '340', '341', '343', '345', '346',  # Shopping centers/malls
+    '353', '362'   # Other retail-related codes
+]
+
+
+# Filter for retail parcels
+retail_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(retail_use_codes)].copy()
+
+
+# Filter for parcels with land area between 6000-12000 sq ft
+sized_retail_parcels = retail_parcels[(retail_parcels['land_area'] >= 6000) & 
+                                     (retail_parcels['land_area'] <= 12000)].copy()
+
+
+# Filter POI data to identify retail competitors
+# Assuming POI data has 'business_type' field that can identify retail businesses
+retail_competitors = poi_proj[poi_proj['business_type'].str.contains('Retail|Store|Shop|Mall', 
+                                                                    case=False, 
+                                                                    na=False)].copy()
+
+
+# Find retail parcels that are not within 400m of any competitor
+result_parcels = []
+
+
+for idx, parcel in sized_retail_parcels.iterrows():
+    # Create 400m buffer around the parcel
+    buffer = parcel.geometry.buffer(400)
+    
+    # Check for competitors within buffer
+    competitors = retail_competitors[retail_competitors.geometry.intersects(buffer)].copy()
+    
+    # If parcel has a matching POI entry, subtract 1 from the count to avoid counting itself
+    # Assuming parcels can be matched to POIs via a common identifier or spatial location
+    competitor_count = len(competitors)
+    
+    # Check if this parcel is itself in the competitors list
+    parcel_centroid = parcel.geometry.centroid
+    for comp_idx, competitor in competitors.iterrows():
+        if parcel_centroid.distance(competitor.geometry) < 10:  # Within 10m tolerance
+            competitor_count -= 1
+            break
+    
+    # Keep parcels with no competitors nearby
+    if competitor_count == 0:
+        result_parcels.append({
+            'ml': parcel['ml'],
+            'geometry': parcel.geometry,
+            'land_area': parcel['land_area'],
+            'use_code': parcel['use_code']
+        })
+
+
+# Create GeoDataFrame from results
+if result_parcels:
+    result_gdf = gpd.GeoDataFrame(result_parcels, crs=parcels_proj.crs)
+    
+    # Convert back to original CRS
+    result_gdf = result_gdf.to_crs(parcels.crs)
+    
+    # Sort by parcel ID for consistency
+    result_gdf = result_gdf.sort_values('ml')
+    
+    # Output results
+    result_ids = result_gdf['ml'].tolist()
+    print(f"Found {len(result_gdf)} retail parcels (6000-12000 sq ft) with no competitors within 400m")
+    print(f"Parcel IDs: {result_ids}")
+else:
+    print("No parcels found matching all criteria.")
+ ",
+    "Answer": ['160-11', '160-14', '160-48', '160-57', '160-69', '162-54', '165-34', '165-57', '168-13', '168-22', '168-33', '168-36', '168-60', '169-100', '169-102', '169-42', '169-46', '169-84', '169-98', '169-99', '170-39', '172-29', '43-71', '43-73', '43-76', '43-77', '44-104', '44-105', '44-99', '48-158'],
+    "Category": "Complex_Constraints",
+    "Subcategory": "Multiple Hard Constraints"
+  },
+
+
+
+
+{
+    "Query": " find commercial parcels that have at least 10% more land area than the average for their specific use type, within 300m of a subway station, and in areas with high educational attainment",
+    "Code": " import geopandas as gpd
+import pandas as pd
+import numpy as np
+from shapely.geometry import Point
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+poi = gpd.read_file('data/cambridge_poi_processed.geojson')
+census = gpd.read_file('data/cambridge_census_cambridge_pct.geojson')
+
+
+# Project to metric CRS for accurate distance measurement
+parcels_proj = parcels.to_crs(epsg=26986)
+poi_proj = poi.to_crs(epsg=26986)
+census_proj = census.to_crs(epsg=26986)
+
+
+# Define commercial use codes (starting with 3 or 4)
+commercial_parcels = parcels_proj[parcels_proj['use_code'].astype(str).str.startswith(('3', '4'))].copy()
+
+
+# Calculate average land area by use_code
+avg_land_area = commercial_parcels.groupby('use_code')['land_area'].mean().reset_index()
+avg_land_area.columns = ['use_code', 'avg_land_area']
+
+
+# Join average land area back to parcels
+commercial_parcels = commercial_parcels.merge(avg_land_area, on='use_code', how='left')
+
+
+# Filter parcels that are at least 10% larger than average for their use type
+large_parcels = commercial_parcels[commercial_parcels['land_area'] >= commercial_parcels['avg_land_area'] * 1.1].copy()
+
+
+# Define subway station locations from POI data
+subway_stations = poi_proj[poi_proj['business_type'] == 'Subway Station'].copy()
+
+
+# If subway stations are not available in POI, define them manually
+if len(subway_stations) == 0:
+    subway_stations_coords = [
+        Point(-71.1189, 42.3736),  # Harvard Square
+        Point(-71.1031, 42.3656),  # Central Square
+        Point(-71.0865, 42.3625),  # Kendall/MIT
+        Point(-71.1226, 42.3782),  # Porter Square
+        Point(-71.1429, 42.3954)   # Alewife
+    ]
+    subway_stations = gpd.GeoDataFrame(geometry=subway_stations_coords, crs=parcels.crs)
+    subway_stations = subway_stations.to_crs(epsg=26986)
+
+
+# Create 300m buffer around subway stations
+subway_buffers = [geom.buffer(300) for geom in subway_stations.geometry]
+union_subway_buffer = gpd.GeoSeries(subway_buffers).unary_union
+
+
+# Find parcels within 300m of subway stations
+parcels_near_subway = large_parcels[large_parcels.geometry.intersects(union_subway_buffer)].copy()
+
+
+# Filter census data for areas with high educational attainment
+# Identify the right column for educational attainment
+edu_columns = [col for col in census_proj.columns if 'degree' in col.lower() or 'education' in col.lower()]
+
+
+if edu_columns:
+    # Use the first matching column
+    edu_column = edu_columns[0]
+    # Define threshold for "high" education (e.g., top 25%)
+    edu_threshold = np.percentile(census_proj[edu_column].dropna(), 75)
+    high_edu_areas = census_proj[census_proj[edu_column] >= edu_threshold].copy()
+else:
+    # If no appropriate column found, use a fallback approach
+    # Cambridge has generally high education levels, so we could use a different socioeconomic indicator
+    if 'median_household_income' in census_proj.columns:
+        income_threshold = np.percentile(census_proj['median_household_income'].dropna(), 75)
+        high_edu_areas = census_proj[census_proj['median_household_income'] >= income_threshold].copy()
+    else:
+        # If no good proxy is available, assume all areas qualify for this constraint
+        high_edu_areas = census_proj.copy()
+
+
+# Find parcels in areas with high educational attainment
+result_parcels = gpd.sjoin(parcels_near_subway, high_edu_areas, how='inner', predicate='intersects')
+
+
+# Remove duplicate parcels if any
+result_parcels = result_parcels.drop_duplicates(subset='ml')
+
+
+# Convert back to original CRS
+result_parcels = result_parcels.to_crs(parcels.crs)
+
+
+# Sort by parcel ID for consistency
+result_parcels = result_parcels.sort_values('ml')
+
+
+# Output results
+result_ids = result_parcels['ml'].tolist()
+print(f"Found {len(result_parcels)} commercial parcels with 10%+ above average land area, near subway, in high-education areas")
+print(f"Parcel IDs: {result_ids}")
+",
+    "Answer": ['105-68', '106-117', '106-124', '107-136', '107-137', '119-89', '14-36', '14-58', '160-11', '160-14', '162-26', '162-54', '165-57', '168-13', '169-102', '169-46', '169-98', '265D-53', '267.4-288', '267.4-305', '267.4-319', '268C-30', '268C-32', '269-138', '29-50', '30-35', '44-106', '44-99', '47-94', '90-133', '90-155', '90-162', '90-169', '90-170', '90-184', '90-193', '91-195', '91-200', '91-208', '91-98', '92-88'],
+    "Category": "Complex_Constraints",
+    "Subcategory": "Multiple Hard Constraints"
+  },
+
+
+{
+    "Query": " identify commercial parcels (any use_code indicating commercial use) that have existed for at least 20 years (this might be estimated from ml), larger than 8000 sq ft, and in areas with high consumer spending
+",
+    "Code": "import geopandas as gpd
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+poi = gpd.read_file('data/cambridge_poi_processed.geojson')
+census = gpd.read_file('data/cambridge_census_cambridge_pct.geojson')
+spending = pd.read_csv('data/cambridge_spend_processed.csv')
+
+
+# Project to metric CRS for accurate spatial operations
+parcels_proj = parcels.to_crs(epsg=26986)
+census_proj = census.to_crs(epsg=26986)
+
+
+# Define commercial use codes - any use code starting with 3 or 4
+commercial_parcels = parcels_proj[parcels_proj['use_code'].astype(str).str.startswith(('3', '4'))].copy()
+
+
+# Filter for parcels larger than 8000 sq ft
+large_commercial_parcels = commercial_parcels[commercial_parcels['land_area'] > 8000].copy()
+
+
+# Estimate parcel age based on ml (parcel ID)
+# This is an assumption - in a real system we would need more reliable data
+# For this example, we'll use a heuristic that lower parcel IDs (ml) are generally older
+# We'll sort the parcels by ml and consider the oldest 50% as being at least 20 years old
+large_commercial_parcels = large_commercial_parcels.sort_values('ml')
+num_old_parcels = len(large_commercial_parcels) // 2
+old_commercial_parcels = large_commercial_parcels.iloc[:num_old_parcels].copy()
+
+
+# Join spending data with census tracts
+# Assuming spending data has a 'GEOID' column to join with census data
+if 'GEOID' in spending.columns and 'GEOID' in census_proj.columns:
+    census_spending = census_proj.merge(spending, on='GEOID', how='left')
+else:
+    # If no direct join column, create a proxy
+    census_spending = census_proj.copy()
+    if 'median_household_income' in census_proj.columns:
+        census_spending['spending_proxy'] = census_proj['median_household_income']
+    else:
+        # Last resort: assign random spending values
+        census_spending['spending_proxy'] = np.random.normal(50000, 10000, len(census_proj))
+
+
+# Identify areas with high consumer spending (top 25%)
+# Find the appropriate spending column
+spending_column = None
+for col in ['total_spending', 'retail_spending', 'spending_proxy', 'median_household_income']:
+    if col in census_spending.columns:
+        spending_column = col
+        break
+
+
+if spending_column:
+    spending_threshold = np.percentile(census_spending[spending_column].dropna(), 75)
+    high_spending_areas = census_spending[census_spending[spending_column] >= spending_threshold].copy()
+else:
+    # If no spending column can be found, use all areas
+    high_spending_areas = census_spending.copy()
+
+
+# Find old commercial parcels in high-spending areas
+result_parcels = gpd.sjoin(old_commercial_parcels, high_spending_areas, how='inner', predicate='intersects')
+
+
+# Remove duplicate parcels if any
+result_parcels = result_parcels.drop_duplicates(subset='ml')
+
+
+# Convert back to original CRS
+result_parcels = result_parcels.to_crs(parcels.crs)
+
+
+# Sort by parcel ID for consistency
+result_parcels = result_parcels.sort_values('ml')
+
+
+# Output results
+result_ids = result_parcels['ml'].tolist()
+print(f"Found {len(result_parcels)} commercial parcels > 8000 sq ft, at least 20 years old, in high-spending areas")
+print(f"Parcel IDs: {result_ids}")
+ ",
+    "Answer": ['11-146', '11-40', '12-19', '13-16', '13-21', '13-23', '133-51', '135-123', '136-15', '14-26', '14-36', '14-39', '14-41', '14-44', '14-45', '14-47', '14-58', '14-64', '15-28', '15-29', '15-3', '15-30', '15-31', '160-11', '160-14', '160-48', '160-57', '160-69', '162-54', '162-66', '165-34', '165-53', '165-55', '165-57', '165-60', '168-13', '168-22', '168-33', '168-36', '168-41', '168-60', '169-100', '169-102', '169-42', '169-46', '169-47', '169-84', '169-93', '169-98', '169-99', '170-39', '18-74', '18-75', '19-23', '20-104', '20-75', '203A-76', '203A-77', '203B-52', '21-118', '21-120', '216-7', '219-37', '229-135', '23-90', '24-133', '24-139', '265A-29', '265A-31', '265A-39', '265A-43', '265A-7', '265B-26', '265B-28', '265B-34', '265B-56', '265B-57', '265B-59', '265B-60', '265B-61', '265C-25', '265D-53', '267.3-226', '267.3-228', '267.3-253', '267.3-254', '267.3-268', '267.3-276', '267.3-277', '267.3-278', '267.3-279', '267.3-280', '267.3-285', '267.4-209', '267.4-218', '267.4-221', '267.4-247', '267.4-254', '267.4-264', '267.4-284', '267.4-285', '267.4-295', '267.4-296'],
+    "Category": "Complex_Constraints",
+    "Subcategory": "Multiple Hard Constraints"
+  },
+
+
+
+
+{
+    "Query": "locates top 50 mixed-use parcels within 300m of multiple public transport options, ideally in neighborhoods with high foot traffic and nearby restaurants ",
+    "Code": "import geopandas as gpd
+import pandas as pd
+import numpy as np
+from shapely.geometry import Point
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+poi = gpd.read_file('data/cambridge_poi_processed.geojson')
+census = gpd.read_file('data/cambridge_census_cambridge_pct.geojson')
+
+
+# Project to metric CRS for accurate distance measurement
+parcels_proj = parcels.to_crs(epsg=26986)
+poi_proj = poi.to_crs(epsg=26986)
+census_proj = census.to_crs(epsg=26986)
+
+
+# Define mixed-use parcels based on use codes
+mixed_use_codes = [
+    '013', '031', '106', '109', '111', '112', '113', '114', '123', 
+    '124', '125', '126', '131', '132', '300', '301', '365', '366', 
+    '367', '373', '374', '375', '376', '377'
+]
+
+
+# Filter for mixed-use parcels
+mixed_use_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(mixed_use_codes)].copy()
+
+
+# If no specific mixed-use codes are available, try alternative approaches
+if len(mixed_use_parcels) == 0:
+    mixed_use_parcels = parcels_proj[
+        parcels_proj['use_code'].astype(str).str.match(r'^[34][01]')
+    ].copy()
+    
+    if len(mixed_use_parcels) == 0:
+        mixed_use_parcels = parcels_proj[
+            (parcels_proj['use_code'].astype(str).str.startswith('1')) |
+            (parcels_proj['use_code'].astype(str).str.startswith('3'))
+        ].copy()
+
+
+# Identify public transport options
+public_transport = poi_proj[poi_proj['business_type'].str.contains(
+    'Subway|Bus|Transit|Train|Station|Stop', case=False, na=False)].copy()
+
+
+# If no public transport in POI, define major stations manually
+if len(public_transport) < 5:
+    transport_points = [
+        Point(-71.1189, 42.3736),  # Harvard Square
+        Point(-71.1031, 42.3656),  # Central Square
+        Point(-71.0865, 42.3625),  # Kendall/MIT
+        Point(-71.1226, 42.3782),  # Porter Square
+        Point(-71.1429, 42.3954),  # Alewife
+        Point(-71.1119, 42.3751),  # Harvard Yard
+        Point(-71.0949, 42.3662)   # Central Square Bus Stop
+    ]
+    public_transport = gpd.GeoDataFrame(geometry=transport_points, crs=parcels.crs)
+    public_transport = public_transport.to_crs(epsg=26986)
+
+
+# Create 300m buffer around each public transport location
+transport_buffers = [geom.buffer(300) for geom in public_transport.geometry]
+
+
+# Find parcels within buffer of multiple transport options
+parcels_transport_count = []
+
+
+for idx, parcel in mixed_use_parcels.iterrows():
+    transport_count = 0
+    for buffer in transport_buffers:
+        if parcel.geometry.intersects(buffer):
+            transport_count += 1
+    
+    if transport_count >= 2:
+        parcels_transport_count.append({
+            'ml': parcel['ml'],
+            'geometry': parcel.geometry,
+            'transport_count': transport_count
+        })
+
+
+# Create GeoDataFrame of parcels near multiple transport options
+if parcels_transport_count:
+    transport_parcels = gpd.GeoDataFrame(parcels_transport_count, crs=parcels_proj.crs)
+    
+    # Identify restaurants
+    restaurants = poi_proj[poi_proj['business_type'].str.contains(
+        'Restaurant|Cafe|Dining|Food|Eatery', case=False, na=False)].copy()
+    
+    # Score parcels based on nearby restaurants and POI density
+    for idx, parcel in transport_parcels.iterrows():
+        buffer_300m = parcel.geometry.buffer(300)
+        nearby_restaurants = restaurants[restaurants.geometry.intersects(buffer_300m)].copy()
+        transport_parcels.loc[idx, 'restaurant_count'] = len(nearby_restaurants)
+        
+        nearby_pois = poi_proj[poi_proj.geometry.intersects(buffer_300m)].copy()
+        transport_parcels.loc[idx, 'poi_count'] = len(nearby_pois)
+    
+    # Calculate composite score
+    max_transport = max(transport_parcels['transport_count'].max(), 1)
+    max_restaurant = max(transport_parcels['restaurant_count'].max(), 1)
+    max_poi = max(transport_parcels['poi_count'].max(), 1)
+    
+    transport_parcels['transport_score'] = (transport_parcels['transport_count'] / max_transport) * 100
+    transport_parcels['restaurant_score'] = (transport_parcels['restaurant_count'] / max_restaurant) * 100
+    transport_parcels['foot_traffic_score'] = (transport_parcels['poi_count'] / max_poi) * 100
+    
+    transport_parcels['composite_score'] = (
+        0.4 * transport_parcels['transport_score'] +
+        0.3 * transport_parcels['restaurant_score'] +
+        0.3 * transport_parcels['foot_traffic_score']
+    )
+    
+    # Sort by composite score, descending
+    result_parcels = transport_parcels.sort_values('composite_score', ascending=False)
+    
+    # Get top parcels
+    top_parcels = result_parcels.head(150)
+    
+    # Output just the IDs as a simple list
+    top_ids = top_parcels['ml'].tolist()
+    print(f"Top mixed-use parcel IDs: {top_ids}")
+else:
+    print("No mixed-use parcels found near multiple public transport options.")
+ ",
+    "Answer": ['160-70', '44-106', '162-74', '165-34', '168-5', '168-7', '106-122', '92-119', '161-91', '168-40', '90-176', '106-49', '93-53', '93-86', '107-138', '93-57', '92-132', '93-107', '93-135', '107-139', '93-49', '106-47', '107-8', '106-46', '90-177', '91-23', '91-180', '91-29', '91-92', '91-99', '93-67', '91-91', '91-184', '91-104', '168-38', '91-185', '91-32', '93-121', '91-186', '28-33', '90-182', '48-158', '90-75', '91-72', '105-56', '90-45', '92-124', '90-11', '107-19', '105-120', '105-83', '107-99', '106-57', '106-50', '89-25', '106-59', '72A-1', '91-192', '119-56', '105-121', '107-1', '91-194', '90-140', '107-21', '93-34', '93-64', '91-61', '118-64', '119-53', '91-70', '93-100', '118-35', '165-56', '124-88', '118-60', '89-2', '107-106', '89-3', '124-48', '106-21', '169-88', '91-17', '124-90', '19-53', '106-120', '16-33', '107-59', '118-24', '118-40', '92-118', '91-97', '106-128', '106-22', '91-75', '73-124', '93-137', '119-65', '75-112', '118-27', '107-58', '19-15', '83-11', '166-80', '118-41', '118-70', '107-77', '10-33', '119-87', '16-6', '69-62', '90-36', '92-130', '118-55', '10-32', '87-34', '124-63', '105-26', '89-8', '118-7', '44-107', '105-25', '118-74', '90-96', '133-43', '111-31', '75-45', '105-51', '90-183', '118-44', '111-28', '48-154', '84-44', '118-3', '107-122', '118-2', '19-44', '19-35', '89-82', '107-127', '85-12', '83-5', '90-192', '118-32', '75-100', '84-69', '17-66', '91-66', '84-70', '17-67', '89-9'],
+    "Category": "Complex_Constraints",
+    "Subcategory": "Multiple Hard Constraints"
+  },
+
+
+
+
+{
+    "Query": "locate commercial properties with unique architectural features, within 200m of historic sites, ideally in vibrant neighborhoods with active community events
+ ",
+    "Code": "import geopandas as gpd
+import pandas as pd
+import numpy as np
+from shapely.geometry import Point
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+poi = gpd.read_file('data/cambridge_poi_processed.geojson')
+census = gpd.read_file('data/cambridge_census_cambridge_pct.geojson')
+
+
+# Project to metric CRS for accurate spatial operations
+parcels_proj = parcels.to_crs(epsg=26986)
+poi_proj = poi.to_crs(epsg=26986)
+census_proj = census.to_crs(epsg=26986)
+
+
+# Define commercial use codes
+commercial_parcels = parcels_proj[parcels_proj['use_code'].astype(str).str.startswith(('3', '4'))].copy()
+
+
+# Identify historic sites from POI data
+historic_sites = poi_proj[poi_proj['business_type'].str.contains(
+    'Historic|Museum|Monument|Heritage|Landmark', case=False, na=False)].copy()
+
+
+# If no historic sites in POI, define major sites manually
+if len(historic_sites) < 5:
+    historic_points = [
+        Point(-71.1189, 42.3736),  # Harvard Square Historic District
+        Point(-71.1063, 42.3667),  # Cambridge City Hall
+        Point(-71.1181, 42.3741),  # Widener Library
+        Point(-71.1211, 42.3725),  # Longfellow House
+        Point(-71.0869, 42.3613)    # MIT Dome
+    ]
+    historic_sites = gpd.GeoDataFrame(geometry=historic_points, crs=parcels.crs)
+    historic_sites = historic_sites.to_crs(epsg=26986)
+
+
+# Create 200m buffer around historic sites
+historic_buffers = [geom.buffer(200) for geom in historic_sites.geometry]
+union_historic_buffer = gpd.GeoSeries(historic_buffers).unary_union
+
+
+# Filter for commercial parcels near historic sites
+parcels_near_historic = commercial_parcels[commercial_parcels.geometry.intersects(union_historic_buffer)].copy()
+
+
+# Score parcels on architectural uniqueness (estimated from building attributes)
+# For this example, use a proxy based on age, size, and potential landmarks
+# In real datasets, we might have specific architectural feature attributes
+
+
+# Proxy 1: Older buildings are more likely to have unique architecture
+# Use parcel ID as a proxy for age (lower ID = older, just for this example)
+parcels_near_historic['parcel_id_numeric'] = parcels_near_historic['ml'].apply(
+    lambda x: float(''.join(filter(str.isdigit, str(x)))) if isinstance(x, str) else float(x))
+parcels_near_historic['age_score'] = 100 - (parcels_near_historic['parcel_id_numeric'] / 
+                                        parcels_near_historic['parcel_id_numeric'].max() * 100)
+
+
+# Proxy 2: Unusual building sizes might indicate architectural uniqueness
+parcels_near_historic['size_diff'] = abs(parcels_near_historic['land_area'] - 
+                                      parcels_near_historic['land_area'].median())
+parcels_near_historic['size_uniqueness'] = parcels_near_historic['size_diff'] / parcels_near_historic['size_diff'].max() * 100
+
+
+# Combine architectural uniqueness proxies
+parcels_near_historic['architectural_score'] = (0.6 * parcels_near_historic['age_score'] + 
+                                             0.4 * parcels_near_historic['size_uniqueness'])
+
+
+# Identify vibrant neighborhoods with community events
+# Use POI density and types as a proxy
+community_poi_types = [
+    'Theater', 'Gallery', 'Museum', 'Venue', 'Community Center', 'Library',
+    'Performance', 'Arts', 'Cultural', 'Plaza', 'Square', 'Festival'
+]
+
+
+# Identify community-related POIs
+community_pois = poi_proj[poi_proj['business_type'].str.contains(
+    '|'.join(community_poi_types), case=False, na=False)].copy()
+
+
+# Calculate neighborhood vibrancy score
+vibrancy_scores = []
+
+
+for idx, parcel in parcels_near_historic.iterrows():
+    # Create 500m buffer to estimate neighborhood
+    neighborhood = parcel.geometry.buffer(500)
+    
+    # Count community POIs in neighborhood
+    nearby_community = community_pois[community_pois.geometry.intersects(neighborhood)].copy()
+    community_count = len(nearby_community)
+    
+    # Count total POIs in neighborhood (diversity of uses = vibrancy)
+    nearby_pois = poi_proj[poi_proj.geometry.intersects(neighborhood)].copy()
+    poi_count = len(nearby_pois)
+    
+    # Calculate vibrancy score based on community venues and POI density
+    if poi_count > 0:
+        vibrancy_scores.append({
+            'ml': parcel['ml'],
+            'community_poi_count': community_count,
+            'total_poi_count': poi_count,
+            'community_ratio': community_count / max(1, poi_count)
+        })
+
+
+# Create DataFrame from vibrancy scores
+vibrancy_df = pd.DataFrame(vibrancy_scores)
+
+
+# Normalize scores to 0-100
+max_community = vibrancy_df['community_poi_count'].max() if vibrancy_df['community_poi_count'].max() > 0 else 1
+max_poi = vibrancy_df['total_poi_count'].max() if vibrancy_df['total_poi_count'].max() > 0 else 1
+
+
+vibrancy_df['community_score'] = vibrancy_df['community_poi_count'] / max_community * 100
+vibrancy_df['density_score'] = vibrancy_df['total_poi_count'] / max_poi * 100
+vibrancy_df['vibrancy_score'] = (0.6 * vibrancy_df['community_score'] + 0.4 * vibrancy_df['density_score'])
+
+
+# Join vibrancy scores back to parcels
+parcels_near_historic = parcels_near_historic.merge(vibrancy_df[['ml', 'vibrancy_score']], on='ml', how='left')
+parcels_near_historic['vibrancy_score'] = parcels_near_historic['vibrancy_score'].fillna(0)
+
+
+# Calculate final composite score
+parcels_near_historic['composite_score'] = (0.5 * parcels_near_historic['architectural_score'] + 
+                                         0.5 * parcels_near_historic['vibrancy_score'])
+
+
+# Sort by composite score
+result_parcels = parcels_near_historic.sort_values('composite_score', ascending=False)
+
+
+# Convert back to original CRS
+result_parcels = result_parcels.to_crs(parcels.crs)
+
+
+# Output top results
+top_ids = result_parcels['ml'].tolist()
+print(f"Top commercial properties with unique architecture near historic sites in vibrant neighborhoods: {top_ids}")
+ ",
+    "Answer": ['160-14', '160-85', '133-51', '160-48', '133-52', '133-14', '133-54', '133-56', '160-83', '133-15', '160-77', '160-58', '160-84', '160-59', '160-69', '160-76', '161-92', '159-2', '133-12', '160-11', '133-49', '169-50', '133-48', '136-15', '169-99', '160-57', '169-93', '160-67', '133-23', '162-67', '162-68', '133-20', '169-98', '169-42', '135-123', '169-102', '169-82', '169-67', '169-81', '107-136', '160-72', '169-7', '169-68', '107-137', '137-13', '169-100', '133-36', '160-71', '107-135', '107-9', '134-7', '107-8', '90-162', '90-193', '169-46', '105-93', '90-14', '90-169', '105-82', '105-68', '90-13', '121-2', '117-56', '91-98', '162-73', '133-27', '90-161', '133-33', '90-55', '90-170', '117-29', '90-18', '90-133', '107-117', '105-74', '105-89', '162-36', '90-70', '105-77', '119-51', '119-95', '105-81', '90-146', '91-7', '169-84', '168-13', '105-67', '90-127', '134-33', '168-59', '133-30', '169-86', '168-36', '91-81', '133-28', '89-95', '169-47', '90-20', '90-52', '105-58', '91-195', '105-53', '1A-207', '90-184', '106-124', '168-60', '91-208', '118-34', '168-25', '168-22', '165-55', '165-53', '91-87', '168-21', '168-33', '75-130', '160-63', '91-119', '134-59', '93-73', '160-66', '168-64', '106-123', '91-200', '118-79', '162-66', '93-74', '93-75', '93-78', '90-185', '168-20', '90-155', '119-89', '119-5', '93-76', '162-54', '106-117', '91-118', '89-17', '93-72', '88-53', '160-64', '90-125', '93-79', '93-80', '162-19', '117-25', '93-99', '162-18', '162-29', '162-17', '162-64', '106-109', '162-65', '162-26', '92-88', '93-48', '117-1', '121-13', '165-34', '116-12', '118-1', '108-54', '91-191', '119-90', '119-93', '165-57', '75-128', '119-47', '119-46', '106-42', '116-117', '105-123', '116-13', '119-21', '120-48', '121-94', '116-43', '91-52', '106-60', '120-74', '269-138', '118-67', '91-83', '108-80', '116-94', '88-45', '17-84', '88-48', '31-20', '92-127', '75-44', '8-91', '116-100', '75-170', '27-81', '91-70', '120-17', '91-82', '109-22', '75-57', '91-63', '91-68', '91-64', '27-86', '88-47', '71-55', '19-23', '69-62', '91-65', '166-77', '16-32', '43A-16', '265C-25', '71-56', '70-86', '109-51', '29-50', '70-90', '165-60', '18-75', '18-77', '43-78', '70-85', '18-74', '43A-24', '166-24', '87-153', '70-9', '27-93', '109-50', '87-109', '19-10', '30-42', '68-47', '27-82', '24-139', '17-74', '74-1', '70-10', '43A-28', '70-12', '166-52', '166-13', '69-148', '24-133', '14-44', '170-39', '15-29', '43A-21', '70-88', '28-23', '18-76', '28-31', '70-22', '23-90', '18-73', '74-6', '69-159', '17-10', '166-31', '74-8', '27-34', '86-84', '142-44', '110-87', '10-16', '140-148', '21-120', '43-76', '140-136', '70-91', '28-43', '21-16', '30-35', '92-125', '18-65', '15-30', '18-64', '20-75', '79-22', '8-76', '30-41', '13-21', '69-165', '14-55', '20-104', '142-43', '20-31', '32-53', '14-64', '85-76', '11-146', '23-157', '16-24', '23-156', '39-174', '8-70', '70-92', '14-45', '43-77', '30-38', '43-70', '172-29', '15-3', '42-86', '8-75', '95-79', '69-179', '14-47', '16-23', '20-82', '14-39', '69-113', '140-157', '14-49', '69-173', '10-31', '166-106', '42-97', '30-40', '69-183', '10-38', '70-74', '43A-19', '15-31', '14-54', '23-146', '15-28', '87-19', '21-118', '21-121', '10-30', '41-26', '23-149', '14-41', '43-73', '14-36', '20-103', '27-70', '43-71', '27-69', '44-104', '20-83', '69-182', '42-87', '44-105', '68-77', '21-115', '69-161', '32-52', '21-109', '13-16', '42-70', '34-28', '69-162', '16-11', '34-8', '111-43', '14-58', '10-39', '41-38', '7-31', '7-115', '9-31', '21-124', '44-106', '22-109', '68-50', '42-81', '42-91', '42-33', '35-34', '35-36', '39-88', '7-29', '44-99', '12-19', '77-41', '37-128', '7-37', '41-37', '7-34', '22-130', '139-83', '13-23', '39-173', '11-40', '41-29', '9-41', '44-100', '35-89', '219-37', '47-94', '44-95', '41-36', '39-179', '130-63', '68-19', '40-153', '31-21', '42-13', '47-97', '1A-213', '42-11', '265B-60', '48-158', '157-50', '81-103', '35-87', '11-46', '80-3', '9-61', '7-35', '42-99', '1A-215', '8-88', '34-136', '31-15', '1A-214', '42-94', '41-28', '34-116', '46-12', '1A-212', '81-50', '81-99', '157-26', '80-142', '35-88', '40-197', '1A-192', '176-64', '81-3', '14-26', '82-57', '41-34', '80-172', '80-51', '81-100', '80-175', '37-20', '81-21', '48-160', '1A-211', '1A-189', '156-60', '173-35', '36-247', '36-226', '156-25', '156-55', '175-75', '67-47', '81-104', '36-164', '36-248', '173-65', '81-16', '81-15', '175-37', '175-68', '81-109', '175-77', '174-25', '36-189', '175-84', '36-137', '181-88', '1A-190', '122-12', '141-80', '53-54', '178-1', '200-91', '128-72', '199-90', '192-39', '129-47', '199-67', '200-22', '200-79', '129-11', '192-75', '128-63', '181-80', '203B-52', '95-75', '192-73', '192-74', '191-85', '128-73', '273-51', '265B-59', '203A-77', '126-27', '191-65', '189-57', '179-75', '95-1', '260-46', '95-74', '183-97', '179-42', '273-29', '129-58', '265A-43', '66-153', '96-61', '183-9', '265A-29', '203A-76', '267C-95', '55-18', '192-156', '273-2', '265A-7', '67-48', '271-44', '261-77', '178-118', '261-85', '189-72', '67-65', '273-35', '67-14', '261-167', '273-40', '67-56', '150-114', '96-60', '273-43', '54-16', '127-119', '192-177', '189-94', '128-71', '67-61', '273-20', '273-1', '191-112', '67-67', '265B-57', '265A-39', '192-121', '261-7', '184-31', '261-6', '260-32', '96-98', '261-65', '178-117', '265A-46', '184-27', '234-178', '230-97', '178-106', '184-155', '265A-40', '64-6', '230-41', '265A-35', '230-42', '196-153', '99-51', '1A-70', '54-25', '196-154', '260-73', '260-74', '96-109', '260-76', '96-124', '96-110', '271-32', '231-27', '184-109', '225-16', '54-19', '67-66', '184-198', '267F-281', '265A-45', '96-117', '189-16', '184-193', '183-100', '184-138', '226-67', '230-71', '184-159', '251-9', '183-119', '129-55', '248-82', '265D-53', '66-99', '63-134', '66-12', '66-82', '184-191', '226-46', '66-73', '261-186', '268C-32', '186-85', '261-112', '267C-62', '97-111', '189-4', '184-168', '268C-30', '96-153', '184-13', '96-152', '186-14', '267C-70', '266-40', '66-29', '267C-71', '62-40', '268C-35', '229-131', '252-160', '66-10', '65-47', '66-94', '254-76', '254-86', '252-172', '267C-73', '66-11', '267E-291', '267C-91', '267F-274', '267E-17', '254-81', '254-82', '254-78', '267E-285', '63-132', '268B-15', '229-117', '66-122', '229-135', '268B-8', '229-150', '267D-294', '62-39', '63-128', '262-116', '230-116', '66-125', '267E-244', '267D-305', '267E-292', '267D-285', '267E-234', '267E-290', '267D-293', '267D-325', '267E-282', '267E-284', '255-21', '267D-313', '251-221', '267F-291', '267E-283', '251-255', '267F-293', '267D-310', '267F-279', '267D-334', '267F-391', '267D-319', '252-114', '267E-287', '267D-258', '267D-312', '267D-256', '267D-286', '267D-311', '267E-280', '252-158', '267D-333', '267E-279', '267D-303', '267D-332', '267D-329', '267D-282', '267D-259', '267.4-310', '267.4-311', '267.4-307', '267.4-312', '267.2-261', '267.3-268', '267.3-280', '267.3-277', '267.1-282', '267.2-267', '267.2-273', '267.2-264', '267.2-272', '267.2-270', '267.1-279'],
+    "Category": "Complex_Constraints",
+    "Subcategory": "Multiple Hard Constraints"
+  },

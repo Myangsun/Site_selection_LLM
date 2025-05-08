@@ -7,7 +7,7 @@ import os
 API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Replace with your actual fine-tuning job ID
-FINE_TUNE_JOB_ID = "ftjob-6rlknsgQ2TBMr6WvRaZIl8dy"
+FINE_TUNE_JOB_ID = "ftjob-WrUBw7WmwFniQW5hZG7liJTS"
 
 # API endpoint
 url = f"https://api.openai.com/v1/fine_tuning/jobs/{FINE_TUNE_JOB_ID}/cancel"

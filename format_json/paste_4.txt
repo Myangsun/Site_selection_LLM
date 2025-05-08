@@ -1,0 +1,1039 @@
+﻿{
+    "Query": "find retail parcels that are at least 200m away from the nearest competing retail business",
+    "Code": "import geopandas as gpd
+
+
+# Load data
+parcels = gpd.read_file('cambridge_parcels.geojson')
+poi = gpd.read_file('cambridge_poi_processed.geojson')
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson')
+
+
+# Define retail business types
+retail_business_types = [
+    'restaurant', 'cafe', 'clothing_store', 'department_store', 'grocery_store',
+    'convenience_store', 'furniture_store', 'hardware_store', 'electronics_store'
+]
+
+
+# Project to metric CRS for accurate distance measurement
+parcels_proj = parcels.to_crs(epsg=26986)
+poi_proj = poi.to_crs(epsg=26986)
+
+
+# Filter retail parcels
+retail_parcels = parcels_proj[parcels_proj['use_code'].astype(str).str.startswith(('323', '324', '325', '326', '327', '330'))].copy()
+
+
+# Filter retail businesses from POI
+retail_businesses = poi_proj[poi_proj['business_type'].isin(retail_business_types)].copy()
+
+
+# Function to find parcels at least 200m away from nearest competing retail business
+def filter_parcels_away_from_competitors(parcel_geom, retail_business_geoms, min_distance=200):
+    # Calculate distances to all retail business geometries
+    distances = [parcel_geom.distance(geom) for geom in retail_business_geoms]
+    # Check if any retail business is within the min_distance
+    return all(dist >= min_distance for dist in distances)
+
+
+# Filter retail parcels
+retail_parcels = retail_parcels.copy()
+
+
+# Get retail business geometries
+retail_business_geoms = retail_businesses['geometry'].tolist()
+
+
+# Filter by competitor distance
+filtered_parcels = []
+for idx, row in retail_parcels.iterrows():
+    if filter_parcels_away_from_competitors(row['geometry'], retail_business_geoms):
+        filtered_parcels.append(row['ml'])
+
+
+# Sort by parcel ID
+filtered_parcels.sort()
+
+
+# Output results
+print(f"Found {len(filtered_parcels)} retail parcels at least 200m away from competitors")
+print(f"Parcel IDs: {filtered_parcels}")
+ ",
+    "Answer": " ['180-57', '189-4', '228-33', '228-55', '234-178', '260-76', '268B-15'] ",
+    "Category": "Business_Environment_Constraints",
+    "Subcategory": "Competitor Density"
+  },
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{
+    "Query": "find parcels with office space that have no more than 2 competing office businesses within 400m",
+    "Code": "import geopandas as gpd
+
+
+# Load data
+parcels = gpd.read_file('cambridge_parcels.geojson')
+poi = gpd.read_file('cambridge_poi_processed.geojson')
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson')
+
+
+# Define projected CRS for Cambridge, MA
+cambridge_crs = 26986
+
+
+# Project to accurate CRS
+parcels_proj = parcels.to_crs(cambridge_crs)
+poi_proj = poi.to_crs(cambridge_crs)
+
+
+# Filter for office parcels (ml codes for office)
+office_ml_codes = ['340', '343', '345', '346', '0346', '404', '406', '0340', '0406']
+office_parcels = parcels_proj[parcels_proj['ml'].astype(str).str.startswith(('34', '40'))]
+
+
+# Filter POI for office businesses
+office_business_types = ['341', '342', '345', '346', '404', '406']
+office_poi = poi_proj[poi_proj['business_type'].astype(str).isin(office_business_types)]
+
+
+# Function to count nearby office businesses
+def count_nearby_offices(parcel_geom, office_poi_geoms, buffer_distance=400):
+    buffered_geom = parcel_geom.buffer(buffer_distance)
+    count = sum(1 for geom in office_poi_geoms if geom is not None and buffered_geom.contains(geom))
+    return count
+
+
+# Get office POI geometries
+office_poi_geoms = office_poi['geometry'].tolist()
+
+
+# Calculate office count for each office parcel
+office_parcels = office_parcels.copy()
+office_parcels['nearby_offices'] = office_parcels.geometry.apply(
+    lambda geom: count_nearby_offices(geom, office_poi_geoms)
+)
+
+
+# Filter for parcels with no more than 2 nearby offices
+result_parcels = office_parcels[office_parcels['nearby_offices'] <= 2]
+
+
+# Sort by parcel ID
+result_parcels = result_parcels.sort_values('ml')
+
+
+# Convert back to original CRS
+result_parcels = result_parcels.to_crs(parcels.crs)
+
+
+# Output results
+result_ids = result_parcels['ml'].tolist()
+print(f"Found {len(result_parcels)} parcels meeting criteria")
+print(f"Parcel IDs: {result_ids}")
+ ",
+    "Answer": "['34-107', '34-108', '34-11', '34-110', '34-111', '34-112', '34-113', '34-116', '34-12', '34-121', '34-122', '34-125', '34-127', '34-13', '34-131', '34-132', '34-133', '34-135', '34-136', '34-137', '34-138', '34-14', '34-141', '34-142', '34-143', '34-144', '34-145', '34-146', '34-147', '34-148', '34-149', '34-15', '34-150', '34-16', '34-17', '34-18', '34-2', '34-20', '34-21', '34-23', '34-24', '34-26', '34-27', '34-28', '34-29', '34-3', '34-30', '34-31', '34-33', '34-34', '34-35', '34-36', '34-37', '34-38', '34-39', '34-4', '34-40', '34-41', '34-42', '34-43', '34-44', '34-45', '34-46', '34-47', '34-48', '34-49', '34-5', '34-51', '34-52', '34-55', '34-57', '34-58', '34-61', '34-67', '34-68', '34-69', '34-7', '34-70', '34-71', '34-72', '34-73', '34-76', '34-77', '34-79', '34-8', '34-86', '34-87', '34-88', '34-90', '34-91', '34-93', '34-95', '34-96', '40-102', '40-105', '40-107', '40-108', '40-109', '40-110', '40-111', '40-113', '40-114', '40-117', '40-120', '40-130', '40-132', '40-133', '40-136', '40-137', '40-138', '40-14', '40-140', '40-141', '40-142', '40-143', '40-144', '40-146', '40-147', '40-148', '40-149', '40-152', '40-153', '40-157', '40-159', '40-160', '40-163', '40-166', '40-167', '40-17', '40-171', '40-172', '40-174', '40-177', '40-178', '40-179', '40-18', '40-180', '40-181', '40-182', '40-183', '40-184', '40-185', '40-186', '40-187', '40-188', '40-191', '40-192', '40-193', '40-197', '40-20', '40-202', '40-203', '40-205', '40-206', '40-208', '40-209', '40-210', '40-211', '40-212', '40-214', '40-216', '40-217', '40-218', '40-219', '40-22', '40-220', '40-221', '40-223', '40-227', '40-228', '40-232', '40-233', '40-234', '40-235', '40-236', '40-24', '40-240', '40-241', '40-242', '40-243', '40-251', '40-252', '40-253', '40-254', '40-255', '40-256', '40-257', '40-258', '40-40', '40-41', '40-42', '40-43', '40-44', '40-45', '40-46', '40-47', '40-52', '40-53', '40-54', '40-56', '40-58', '40-59', '40-60', '40-61', '40-62', '40-63', '40-66', '40-67', '40-68', '40-69', '40-70', '40-71', '40-75', '40-8', '40-84', '40-85', '40-86', '40-9', '40-96', '40-97', '40-98', '40-99'] ",
+    "Category": "Business_Environment_Constraints",
+    "Subcategory": "Competitor Density"
+  },
+
+
+
+
+
+
+
+
+
+
+
+
+{
+    "Query": "find retail spaces that are located in areas with the lowest density of competing retail businesses",
+    "Code": " import geopandas as gpd
+
+
+# Load data
+parcels = gpd.read_file('cambridge_parcels.geojson')
+poi = gpd.read_file('cambridge_poi_processed.geojson')
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson')
+
+
+# Define retail business types
+retail_business_types = [
+    'restaurant', 'cafe', 'clothing_store', 'department_store', 'grocery_store',
+    'supermarket', 'convenience_store', 'furniture_store', 'hardware_store',
+    'electronics_store', 'toy_store', 'book_store', 'jewelry_store', 'department_store'
+]
+
+
+# Filter for retail POIs
+retail_poi = poi[poi['business_type'].isin(retail_business_types)].copy()
+
+
+# Project to metric CRS for accurate distance measurement
+parcels_proj = parcels.to_crs(epsg=26986)
+retail_poi_proj = retail_poi.to_crs(epsg=26986)
+
+
+# Define retail space criteria
+retail_space_criteria = (
+    (parcels_proj['use_code'].astype(str).str.startswith('3')) |  # Commercial
+    (parcels_proj['use_code'].astype(str).str.startswith('34')) |  # Restaurant
+    (parcels_proj['use_code'].astype(str).str.startswith('323'))  # Retail
+)
+
+
+# Filter for retail spaces
+retail_spaces = parcels_proj[retail_space_criteria].copy()
+
+
+# Calculate retail business density in 500ft (152.4m) radius
+def calculate_density(parcel_geom, poi_geoms, radius=152.4):
+    buffered_geom = parcel_geom.buffer(radius)
+    count = sum(1 for geom in poi_geoms if geom is not None and buffered_geom.contains(geom))
+    return count / (3.14 * (radius ** 2))  # Density = count / area
+
+
+# Get retail POI geometries
+retail_poi_geoms = retail_poi_proj['geometry'].tolist()
+
+
+# Calculate density for each retail space
+retail_spaces.loc[:, 'business_density'] = retail_spaces.geometry.apply(
+    lambda geom: calculate_density(geom, retail_poi_geoms)
+)
+
+
+# Sort by density (lower is better)
+result_parcels = retail_spaces.sort_values('business_density').copy()
+
+
+# Convert back to original CRS
+result_parcels = result_parcels.to_crs(parcels.crs)
+
+
+# Get parcel IDs
+result_ids = result_parcels['ml'].tolist()
+
+
+# Print results
+print(f"Found {len(result_parcels)} retail spaces with lowest business density")
+print(f"Parcel IDs: {result_ids[:30]}")  # Show first 30 due to potentially large result set
+  ",
+    "Answer": " ['189-103', '251-9', '267F-295', '267E-280', '66-94', '219-37', '260-74', '267F-283', '186-85', '180-57', '242B-998', '268B-8', '99-51', '267.1-279', '184-13', '66-122', '267C-91', '248-82', '234-177', '260-73', '228-55', '7-35', '267.4-247', '260-76', '267F-393', '228-33', '266-40', '252-114', '268B-15', '190-33']",
+    "Category": "Business_Environment_Constraints",
+    "Subcategory": "Competitor Density"
+  },
+
+
+
+
+
+
+
+
+
+
+{
+    "Query": " find parcels with office space that are at least 150m away from the nearest competing office",
+    "Code": "import geopandas as gpd
+
+
+# Query: find parcels with office space that are at least 150m away from the nearest competing office
+
+
+# Load data
+parcels = gpd.read_file('cambridge_parcels.geojson')
+poi = gpd.read_file('cambridge_poi_processed.geojson')
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson')
+
+
+# Define projected CRS for Cambridge, MA
+cambridge_crs = 26986
+
+
+# Project to accurate CRS
+parcels_proj = parcels.to_crs(cambridge_crs)
+poi_proj = poi.to_crs(cambridge_crs)
+
+
+# Define office use codes
+office_use_codes = ['340', '343', '345', '346', '0340', '404', '406']
+
+
+# Filter for office parcels
+office_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(office_use_codes)].copy()
+
+
+# Filter POI for office businesses
+office_poi_types = ['341', '342', '345', '346', '0406']
+office_poi = poi_proj[poi_proj['business_type'].astype(str).isin(office_poi_types)].copy()
+
+
+# Ensure consistent geometry type
+office_poi = office_poi[office_poi.geometry.type == 'POINT']
+
+
+# Calculate 150m buffer around each office POI
+office_poi_buffers = [geom.buffer(150) for geom in office_poi.geometry]
+office_poi_union_buffer = gpd.GeoSeries(office_poi_buffers).unary_union
+
+
+# Find competing office POI (those within 150m of any office POI)
+# For each office parcel, check if it is at least 150m away from any competing office
+def has_competing_office(parcel_geom, office_poi_union_buffer):
+    # Check if parcel is within 150m of any office POI
+    return not office_poi_union_buffer.contains(parcel_geom)
+
+
+# Filter for parcels that have at least one competing office
+office_parcels = office_parcels[office_parcels.geometry.notnull()].copy()
+office_parcels.loc[:, 'has_competing_office'] = office_parcels.geometry.apply(
+    lambda geom: has_competing_office(geom, office_poi_union_buffer)
+)
+
+
+# Filter for parcels that have at least one competing office
+result_parcels = office_parcels[office_parcels['has_competing_office']].copy()
+
+
+# Sort by parcel ID
+result_parcels = result_parcels.sort_values('ml')
+
+
+# Convert back to original CRS
+result_parcels = result_parcels.to_crs(parcels.crs)
+
+
+# Output results
+result_ids = result_parcels['ml'].tolist()
+print(f"Found {len(result_parcels)} office parcels at least 150m away from competing offices")
+print(f"Parcel IDs: {result_ids}") ",
+    "Answer": " ['10-16', '10-31', '10-38', '10-39', '102-25', '105-123', '105-58', '105-74', '105-77', '105-81', '105-89', '106-123', '107-135', '107-136', '109-22', '109-51', '11-146', '11-40', '110-16', '110-18', '110-21', '110-55', '110-87', '110-90', '114A-66', '116-117', '117-1', '117-25', '117-29', '117-56', '118-1', '118-34', '118-79', '119-93', '119-95', '12-19', '120-17', '120-74', '121-13', '121-2', '121-94', '127-119', '128-70', '128-71', '129-11', '129-58', '13-16', '13-23', '133-14', '133-15', '133-20', '133-23', '133-27', '133-28', '133-30', '133-33', '133-49', '133-51', '134-59', '14-26', '14-36', '14-39', '14-44', '14-45', '14-47', '14-49', '14-58', '14-64', '15-28', '15-29', '15-3', '15-30', '15-31', '152-52', '154-64', '154-65', '154-73', '156-55', '156-60', '16-23', '16-32', '160-11', '160-14', '160-48', '160-57', '160-59', '160-64', '160-67', '160-69', '160-71', '160-72', '160-77', '162-17', '162-36', '162-64', '162-65', '162-67', '162-68', '162-73', '165-53', '165-55', '165-57', '166-24', '166-33', '166-35', '166-37', '166-52', '166-77', '168-13', '168-20', '168-21', '168-22', '168-25', '168-33', '168-36', '168-41', '168-48', '168-49', '168-59', '168-60', '168-64', '169-102', '169-42', '169-50', '169-81', '169-82', '169-84', '169-93', '169-98', '169-99', '17-10', '17-74', '17-84', '172-29', '174-26', '174-31', '175-68', '175-77', '178-1', '178-106', '178-117', '178-133', '178-91', '179-42', '18-73', '18-74', '18-76', '18-77', '181-65', '181-88', '182-8', '182-84', '182-98', '183-119', '184-155', '184-168', '186-14', '189-57', '19-22', '19-23', '190-33', '191-112', '192-73', '192-74', '192-75', '196-153', '1A-105', '1A-172', '1A-190', '1A-200', '1A-201', '1A-209', '1A-213', '1A-70', '20-103', '20-31', '203A-76', '203B-52', '21-115', '21-120', '216-7', '226-67', '229-150', '23-149', '23-90', '230-42', '236-148', '251-9', '252-160', '254-86', '261-186', '261-77', '262-116', '265A-29', '265A-31', '265A-40', '265B-59', '265D-53', '267.1-278', '267.2-267', '267.2-272', '267.2-273', '267.3-253', '267.3-285', '267.4-288', '267.4-305', '267.4-307', '267.4-313', '267.4-319', '267.4-322', '267.4-323', '267C-70', '267C-71', '267D-282', '267D-285', '267D-286', '267D-299', '267D-300', '267D-305', '267D-310', '267D-311', '267D-315', '267D-316', '267D-319', '267D-329', '267E-279', '267E-280', '267E-282', '267E-284', '267E-285', '267F-274', '267F-279', '267F-281', '267F-283', '267F-293', '267F-296', '267F-301', '267F-391', '268C-32', '268C-35', '269-138', '27-34', '27-82', '273-29', '273-40', '273-51', '28-23', '28-31', '29-50', '30-35', '30-38', '30-40', '30-41', '30-42', '31-15', '31-20', '32-53', '34-116', '36-248', '39-173', '39-88', '40-153', '41-26', '41-29', '41-36', '41-37', '41-38', '42-70', '42-86', '42-87', '42-94', '42-97', '42-99', '43-70', '43-73', '43-76', '43-77', '43-78', '43A-16', '43A-21', '43A-24', '43A-28', '44-100', '44-104', '44-105', '44-99', '46-12', '47-94', '47-97', '54-19', '54-25', '55-18', '63-128', '63-132', '63-135', '64-6', '66-153', '67-14', '67-47', '67-48', '67-66', '67-67', '68-19', '68-47', '68-50', '68-76', '68-77', '69-148', '69-159', '69-165', '69-173', '69-179', '69-182', '69-183', '70-22', '70-74', '70-86', '71-55', '75-44', '77-41', '8-75', '8-76', '8-91', '80-172', '80-175', '80-3', '80-51', '81-103', '83-7', '83-92', '84-1', '84-67', '85-76', '87-153', '88-53', '9-41', '90-13', '90-133', '90-14', '90-161', '90-169', '90-170', '90-185', '90-20', '90-52', '90-70', '91-208', '91-63', '91-64', '91-87', '92-127', '93-48', '93-72', '93-73', '93-74', '93-75', '93-99', '94-6', '95-71', '95-72', '95-74', '95-75', '95-76', '95-78', '95-79', '96-109', '96-110', '96-124', '96-98'] ",
+    "Category": "Business_Environment_Constraints",
+    "Subcategory": "Competitor Density"
+  },
+
+
+
+
+
+
+{
+    "Query": "locate retail parcels that are in areas with a balanced mix of residential and commercial uses, defined as having at least 30% of nearby businesses being restaurants or cafes  ",
+    "Code": "import geopandas as gpd
+import pandas as pd
+import numpy as np
+
+
+# Query: locate retail parcels that are in areas with a balanced mix of residential and commercial uses, 
+# defined as having at least 30% of nearby businesses being restaurants or cafes.
+
+
+# Load data
+parcels = gpd.read_file('cambridge_parcels.geojson')
+poi = gpd.read_file('cambridge_poi_processed.geojson')
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson')
+
+
+# Define retail use codes consistently
+retail_use_codes = ['323', '324', '325', '326', '327', '330']
+
+
+# Filter for retail parcels
+retail_parcels = parcels[parcels['use_code'].astype(str).isin(retail_use_codes)].copy()
+
+
+# Set CRS for accurate distance measurement
+retail_parcels = retail_parcels.to_crs(epsg=26986)
+poi = poi.to_crs(epsg=26986)
+
+
+# Define restaurant/cafe POI codes
+restaurant_cafe_types = ['restaurant', 'cafe', 'fast_food']
+
+
+# Function to calculate restaurant ratio
+def calculate_restaurant_ratio(parcel_geom, poi_data, buffer_distance=100):
+    buffered_geom = parcel_geom.buffer(buffer_distance)
+    
+    # Filter POI within buffer
+    nearby_poi = poi_data[poi_data.geometry.apply(lambda x: buffered_geom.contains(x))]
+    
+    if len(nearby_poi) == 0:
+        return 0.0
+    
+    # Count restaurants/cafes
+    restaurant_count = sum(1 for _, row in nearby_poi.iterrows() 
+                         if row['business_type'] in restaurant_cafe_types)
+    
+    # Calculate ratio
+    return restaurant_count / len(nearby_poi) if len(nearby_poi) > 0 else 0.0
+
+
+# Calculate restaurant ratio for each retail parcel
+retail_parcels['restaurant_ratio'] = retail_parcels.apply(
+    lambda row: calculate_restaurant_ratio(row.geometry, poi),
+    axis=1
+)
+
+
+# Filter for parcels with at least 30% restaurant ratio
+balanced_parcels = retail_parcels[retail_parcels['restaurant_ratio'] >= 0.3].copy()
+
+
+# Sort by parcel ID
+balanced_parcels = balanced_parcels.sort_values('ml')
+
+
+# Output results
+result_ids = balanced_parcels['ml'].tolist()
+print(f"Found {len(balanced_parcels)} retail parcels in areas with balanced mix")
+print(f"Parcel IDs: {result_ids}") ",
+    "Answer": "['162-19', '162-26', '162-54', '1A-189', '1A-211', '74-1', '74-8', '91-52']  ",
+    "Category": "Business_Environment_Constraints",
+    "Subcategory": "Competitor Density"
+  },
+
+
+
+
+{
+    "Query": " search for commercial sites that are in predominantly retail neighborhoods but within walking distance to residential areas, ensuring at least 20% of nearby buildings are homes.
+ ",
+    "Code": "import geopandas as gpd
+
+
+# Query: search for commercial sites that are in predominantly retail neighborhoods but 
+# within walking distance to residential areas, ensuring at least 20% of nearby buildings are homes.
+
+
+# Load data
+parcels = gpd.read_file('cambridge_parcels.geojson')
+poi = gpd.read_file('cambridge_poi_processed.geojson')
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson')
+
+
+# Define projected CRS for Cambridge, MA
+cambridge_crs = 26986
+
+
+# Project to accurate CRS
+parcels_proj = parcels.to_crs(epsg=cambridge_crs)
+poi_proj = poi.to_crs(epsg=cambridge_crs)
+
+
+# Define retail use codes
+retail_use_codes = ['323', '324', '325', '326', '327', '330']
+
+
+# Filter for retail parcels
+retail_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(retail_use_codes)].copy()
+
+
+# Define residential use codes
+residential_use_codes = ['101', '102', '104', '105', '106', '107', '108', '109', '110', 
+                        '111', '112', '113', '114', '120', '121', '122', '123', '124']
+
+
+# Filter for residential parcels
+residential_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(residential_use_codes)].copy()
+
+
+# Function to calculate residential density around retail parcels
+def calculate_residential_ratio(parcel_geom, all_parcels, residential_parcels, buffer_distance=300):
+    # Create buffer
+    buffered_geom = parcel_geom.buffer(buffer_distance)
+    
+    # Find all parcels within buffer
+    nearby_parcels = all_parcels[all_parcels.geometry.intersects(buffered_geom)].copy()
+    
+    if len(nearby_parcels) == 0:
+        return 0
+    
+    # Count residential parcels within buffer
+    nearby_residential = residential_parcels[residential_parcels.geometry.intersects(buffered_geom)].copy()
+    
+    # Calculate ratio
+    residential_ratio = len(nearby_residential) / len(nearby_parcels)
+    
+    return residential_ratio
+
+
+# Calculate residential ratio for each retail parcel
+retail_parcels['residential_ratio'] = retail_parcels.apply(
+    lambda row: calculate_residential_ratio(row.geometry, parcels_proj, residential_parcels),
+    axis=1
+)
+
+
+# Filter parcels with at least 20% residential
+balanced_parcels = retail_parcels[retail_parcels['residential_ratio'] >= 0.2].copy()
+
+
+# Sort by parcel ID
+balanced_parcels = balanced_parcels.sort_values('ml')
+
+
+# Convert back to original CRS
+balanced_parcels = balanced_parcels.to_crs(parcels.crs)
+
+
+# Output results
+result_ids = balanced_parcels['ml'].tolist()
+print(f"Found {len(balanced_parcels)} commercial parcels near residential areas")
+print(f"Parcel IDs: {result_ids}") ",
+    "Answer": " ['100-62', '102-46', '105-68', '105-82', '106-109', '106-124', '107-117', '107-9', '108-54', '109-50', '110-91', '114A-120', '116-12', '116-94', '119-90', '120-48', '122-12', '125-73', '126-27', '128-63', '128-72', '133-12', '133-48', '133-52', '134-33', '136-15', '139-83', '140-148', '141-80', '150-114', '152-25', '154-111', '154-89', '154-97', '155-42', '156-25', '157-26', '16-11', '162-29', '166-106', '166-13', '169-46', '169-47', '169-86', '173-65', '174-27', '174-30', '174-33', '174-36', '174-37', '174-73', '175-37', '175-75', '175-84', '176-15', '176-64', '178-79', '179-75', '179-87', '18-64', '18-65', '180-57', '182-88', '182-89', '182-90', '183-100', '184-109', '184-159', '184-193', '189-4', '189-72', '191-65', '191-85', '192-121', '192-177', '195-59', '196-123', '196-154', '199-30', '199-31', '199-67', '199-90', '1A-189', '1A-192', '1A-211', '20-75', '20-82', '20-83', '200-22', '200-79', '21-121', '21-16', '226-46', '228-33', '228-55', '229-117', '229-131', '23-156', '230-116', '230-41', '230-71', '230-97', '231-27', '233-147', '233-175', '234-178', '234-193', '236-146', '236-84', '236-95', '252-158', '252-172', '254-76', '254-78', '254-82', '255-21', '260-46', '260-76', '261-112', '261-6', '261-7', '265A-35', '265A-46', '265C-25', '267D-259', '268B-15', '271-32', '273-2', '273-20', '34-8', '36-137', '42-81', '42-91', '69-162', '70-91', '70-92', '74-1', '74-6', '74-8', '75-128', '79-22', '8-88', '81-100', '82-31', '83-15', '83-80', '83-90', '83-98', '83-99', '84-101', '84-12', '84-91', '85-66', '86-84', '88-48', '90-125', '90-127', '90-155', '90-162', '91-191', '91-52', '92-88', '93-76', '93-78', '93-79', '93-80', '96-152', '97-111']",
+    "Category": "Business_Environment_Constraints",
+    "Subcategory": "Competitor Density"
+  },
+
+
+
+
+
+
+{
+    "Query": " identify commercial parcels near diverse marketplaces, specifically those within 500 meters of an area with at least 15 different types of businesses.  ",
+    "Code": "import geopandas as gpd
+import pandas as pd
+
+
+# Query: identify commercial parcels near diverse marketplaces, specifically those within 
+# 500 meters of an area with at least 15 different types of businesses.
+
+
+# Load data
+parcels = gpd.read_file('cambridge_parcels.geojson')
+poi = gpd.read_file('cambridge_poi_processed.geojson')
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson')
+
+
+# Define projected CRS for Cambridge, MA
+cambridge_crs = 26986
+
+
+# Project to accurate CRS
+parcels_proj = parcels.to_crs(cambridge_crs)
+poi_proj = poi.to_crs(cambridge_crs)
+
+
+# Filter for commercial parcels
+commercial_codes = [
+    '300', '302', '316', '323', '324', '325', '326', '327', '330', 
+    '332', '334', '340', '341', '343', '345', '346', '353', '362',
+    '375', '404', '406', '0340', '0406'
+]
+commercial_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(commercial_codes)].copy()
+
+
+# Define function to identify diverse marketplaces
+def is_diverse_marketplace(poi_subset):
+    if poi_subset.shape[0] < 15:
+        return False
+    business_types = poi_subset['business_type'].nunique()
+    return business_types >= 15
+
+
+# Create 500m buffer around commercial parcels
+buffered_parcels = commercial_parcels.buffer(500)
+
+
+# Identify diverse marketplaces within 500m
+diverse_market_ids = []
+for idx, buffered in zip(commercial_parcels.index, buffered_parcels):
+    nearby_poi = poi_proj[poi_proj.geometry.distance(buffered) < 500].copy()
+    if is_diverse_marketplace(nearby_poi):
+        diverse_market_ids.append(idx)
+
+
+# Filter for parcels near diverse marketplaces
+result_parcels = commercial_parcels.loc[diverse_market_ids].copy()
+
+
+# Sort by parcel ID (ml)
+result_parcels = result_parcels.sort_values('ml')
+
+
+# Convert back to original CRS
+result_parcels = result_parcels.to_crs(parcels.crs)
+
+
+# Output results
+result_ids = result_parcels['ml'].tolist()
+print(f"Found {len(result_parcels)} commercial parcels near diverse marketplaces")
+print(f"Parcel IDs: {result_ids}")
+  ",
+    "Answer": " ['10-16', '10-31', '10-38', '10-39', '100-62', '100-68', '100-86', '102-25', '102-46', '105-123', '105-53', '105-58', '105-68', '105-74', '105-77', '105-81', '105-82', '105-89', '106-109', '106-117', '106-123', '106-124', '107-117', '107-135', '107-136', '107-8', '107-9', '108-54', '108-80', '109-22', '109-50', '109-51', '11-146', '11-40', '110-16', '110-18', '110-21', '110-55', '110-63', '110-87', '110-90', '110-91', '114A-120', '114A-66', '116-100', '116-117', '116-12', '116-94', '117-1', '117-25', '117-29', '117-56', '118-1', '118-34', '118-67', '118-79', '119-90', '119-93', '119-95', '12-19', '120-17', '120-48', '120-74', '121-13', '121-2', '121-94', '122-12', '125-73', '125-80', '126-131', '126-27', '127-119', '127-139', '128-63', '128-70', '128-71', '128-72', '129-11', '129-55', '129-58', '13-16', '13-23', '133-12', '133-14', '133-15', '133-20', '133-23', '133-27', '133-28', '133-30', '133-33', '133-36', '133-48', '133-49', '133-51', '133-52', '134-33', '134-59', '134-7', '136-15', '139-83', '14-26', '14-36', '14-39', '14-44', '14-45', '14-47', '14-49', '14-58', '14-64', '140-148', '141-80', '142-43', '142-44', '15-28', '15-29', '15-3', '15-30', '15-31', '150-114', '152-25', '152-52', '154-101', '154-111', '154-64', '154-65', '154-73', '154-89', '154-97', '154-98', '155-42', '156-25', '156-55', '156-60', '157-26', '159-2', '16-11', '16-23', '16-32', '160-11', '160-14', '160-48', '160-57', '160-58', '160-59', '160-63', '160-64', '160-66', '160-67', '160-69', '160-71', '160-72', '160-76', '160-77', '160-83', '160-84', '160-85', '162-17', '162-18', '162-19', '162-26', '162-29', '162-36', '162-54', '162-64', '162-65', '162-67', '162-68', '162-73', '165-34', '165-53', '165-55', '165-57', '166-106', '166-13', '166-24', '166-33', '166-35', '166-37', '166-52', '166-77', '168-13', '168-20', '168-21', '168-22', '168-25', '168-33', '168-36', '168-41', '168-48', '168-49', '168-59', '168-60', '168-64', '169-100', '169-102', '169-42', '169-46', '169-47', '169-50', '169-67', '169-68', '169-7', '169-81', '169-82', '169-84', '169-86', '169-93', '169-98', '169-99', '17-10', '17-74', '17-84', '170-39', '172-29', '173-65', '174-26', '174-27', '174-30', '174-31', '174-33', '174-36', '174-37', '174-73', '175-37', '175-68', '175-75', '175-77', '175-84', '176-15', '176-64', '177-34', '178-1', '178-106', '178-117', '178-118', '178-133', '178-21', '178-43', '178-79', '178-91', '179-42', '179-75', '179-87', '18-64', '18-65', '18-73', '18-74', '18-76', '18-77', '180-57', '181-65', '181-80', '181-88', '182-8', '182-84', '182-88', '182-89', '182-90', '182-98', '183-100', '183-119', '183-97', '184-109', '184-155', '184-159', '184-168', '184-191', '184-193', '184-31', '186-14', '186-85', '186-96', '189-4', '189-57', '189-72', '189-88', '19-10', '19-22', '19-23', '190-33', '191-112', '191-65', '191-85', '192-121', '192-156', '192-177', '192-39', '192-73', '192-74', '192-75', '194-68', '195-59', '196-123', '196-153', '196-154', '198-28', '199-30', '199-31', '199-67', '199-90', '1A-105', '1A-172', '1A-189', '1A-190', '1A-192', '1A-200', '1A-201', '1A-209', '1A-211', '1A-213', '1A-70', '20-103', '20-31', '20-75', '20-82', '20-83', '20-92', '200-22', '200-79', '203A-76', '203B-52', '21-115', '21-120', '21-121', '21-124', '21-16', '216-7', '219-37', '22-109', '226-46', '226-67', '228-33', '228-55', '229-117', '229-131', '229-135', '229-150', '23-146', '23-149', '23-156', '23-90', '230-116', '230-41', '230-42', '230-71', '230-97', '231-27', '233-147', '233-175', '233-89', '234-178', '234-193', '236-146', '236-148', '236-84', '236-95', '24-133', '242B-998', '248-82', '251-221', '251-9', '252-114', '252-147', '252-158', '252-160', '252-172', '254-76', '254-78', '254-82', '254-86', '255-21', '260-32', '260-46', '260-73', '260-74', '260-76', '261-112', '261-186', '261-6', '261-7', '261-77', '262-116', '265A-29', '265A-31', '265A-35', '265A-39', '265A-40', '265A-43', '265A-46', '265A-7', '265B-26', '265B-28', '265B-59', '265B-61', '265C-25', '265D-53', '267.1-278', '267.2-264', '267.2-267', '267.2-272', '267.2-273', '267.3-253', '267.3-278', '267.3-285', '267.4-209', '267.4-247', '267.4-284', '267.4-288', '267.4-295', '267.4-296', '267.4-305', '267.4-307', '267.4-313', '267.4-319', '267.4-322', '267.4-323', '267C-70', '267C-71', '267D-256', '267D-259', '267D-282', '267D-285', '267D-286', '267D-299', '267D-300', '267D-305', '267D-310', '267D-311', '267D-315', '267D-316', '267D-319', '267D-325', '267D-329', '267E-234', '267E-244', '267E-279', '267E-280', '267E-282', '267E-284', '267E-285', '267F-274', '267F-279', '267F-281', '267F-283', '267F-293', '267F-296', '267F-301', '267F-391', '268B-15', '268B-8', '268C-32', '268C-35', '269-138', '27-34', '27-82', '271-32', '273-2', '273-20', '273-29', '273-35', '273-40', '273-51', '28-23', '28-31', '29-50', '30-35', '30-38', '30-40', '30-41', '30-42', '31-15', '31-20', '32-53', '34-116', '34-28', '34-8', '35-34', '35-36', '36-137', '36-164', '36-189', '36-248', '37-20', '39-173', '39-179', '39-88', '40-153', '41-26', '41-29', '41-36', '41-37', '41-38', '42-13', '42-33', '42-70', '42-81', '42-86', '42-87', '42-91', '42-94', '42-97', '42-99', '43-70', '43-71', '43-73', '43-76', '43-77', '43-78', '43A-16', '43A-21', '43A-24', '43A-28', '44-100', '44-104', '44-105', '44-106', '44-99', '46-12', '47-94', '47-97', '48-158', '54-19', '54-25', '55-18', '63-128', '63-131', '63-132', '63-134', '63-135', '64-6', '66-153', '67-14', '67-47', '67-48', '67-66', '67-67', '68-19', '68-47', '68-50', '68-76', '68-77', '69-148', '69-159', '69-161', '69-162', '69-165', '69-173', '69-179', '69-182', '69-183', '69-62', '7-115', '7-31', '7-34', '7-35', '7-37', '70-22', '70-74', '70-86', '70-90', '70-91', '70-92', '71-55', '74-1', '74-6', '74-8', '75-128', '75-170', '75-44', '77-41', '79-22', '8-75', '8-76', '8-86', '8-88', '8-91', '80-172', '80-175', '80-3', '80-51', '81-100', '81-103', '81-104', '81-21', '81-3', '81-50', '82-31', '82-57', '83-1', '83-15', '83-7', '83-80', '83-90', '83-92', '83-98', '83-99', '84-1', '84-101', '84-12', '84-67', '84-85', '84-91', '84-97', '85-66', '85-76', '86-84', '87-153', '88-45', '88-48', '88-53', '9-31', '9-41', '9-61', '90-125', '90-127', '90-13', '90-133', '90-14', '90-155', '90-161', '90-162', '90-169', '90-170', '90-18', '90-185', '90-20', '90-52', '90-70', '91-118', '91-191', '91-208', '91-52', '91-63', '91-64', '91-7', '91-70', '91-81', '91-87', '92-127', '92-88', '93-48', '93-72', '93-73', '93-74', '93-75', '93-76', '93-78', '93-79', '93-80', '93-99', '94-6', '94-7', '95-71', '95-72', '95-74', '95-75', '95-76', '95-78', '95-79', '96-109', '96-110', '96-124', '96-152', '96-98', '97-111', '99-51'] ",
+    "Category": "Business_Environment_Constraints",
+    "Subcategory": "Competitor Density"
+  },
+
+
+
+
+{
+    "Query": "find retail sites that are in mixed-use developments, ensuring that among 10 nearby parcels, there are both residential and different types of retail.   ",
+    "Code": " import geopandas as gpd
+import pandas as pd
+
+
+# Query: find retail sites that are in mixed-use developments, ensuring that among 
+# 10 nearby parcels, there are both residential and different types of retail.
+
+
+# Load data
+parcels = gpd.read_file('cambridge_parcels.geojson')
+poi = gpd.read_file('cambridge_poi_processed.geojson')
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson')
+spend = pd.read_csv('cambridge_spend_processed.csv')
+
+
+# Define projected CRS for Cambridge, MA
+cambridge_crs = 26986
+
+
+# Project to accurate CRS
+parcels_proj = parcels.to_crs(epsg=cambridge_crs)
+poi_proj = poi.to_crs(epsg=cambridge_crs)
+
+
+# Define retail and residential use codes
+retail_use_codes = ['323', '324', '325', '326', '327', '330']
+residential_use_codes = ['101', '1014', '102', '1024', '104', '105', '109', '1094', '1095', '1098', 
+                         '111', '112', '113', '114', '121', '970', '9700']
+
+
+# Filter for retail parcels
+retail_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(retail_use_codes)].copy()
+
+
+# Function to check surrounding parcels for mixed-use
+def has_mixed_use_nearby(parcel_geom, all_parcels, residential_codes, retail_codes, num_neighbors=10, buffer=50):
+    # Get parcels within buffer distance
+    buffered_geom = parcel_geom.buffer(buffer)
+    nearby_parcels = all_parcels[all_parcels.geometry.intersects(buffered_geom)].copy()
+    
+    # Sort by distance
+    if len(nearby_parcels) <= 1:  # Only the parcel itself
+        return False
+        
+    # Ensure we have sufficient neighbors
+    if len(nearby_parcels) < num_neighbors:
+        return False
+    
+    # Check for residential
+    has_residential = any(nearby_parcels['use_code'].astype(str).isin(residential_codes))
+    
+    # Check for multiple retail types
+    retail_types = []
+    for retail_code in retail_codes:
+        if any(nearby_parcels['use_code'].astype(str).str.startswith(str(retail_code))):
+            retail_types.append(retail_code)
+    
+    has_multiple_retail = len(retail_types) > 1
+    
+    return has_residential and has_multiple_retail
+
+
+# Find valid mixed-use retail parcels
+valid_parcels = []
+for idx, row in retail_parcels.iterrows():
+    if has_mixed_use_nearby(row.geometry, parcels_proj, residential_use_codes, retail_use_codes):
+        valid_parcels.append(row['ml'])
+
+
+# Sort by parcel ID
+valid_parcels.sort()
+
+
+# Get final results
+result_parcels = parcels_proj[parcels_proj['ml'].isin(valid_parcels)].copy()
+
+
+# Convert back to original CRS
+result_parcels = result_parcels.to_crs(parcels.crs)
+
+
+# Output results
+result_ids = result_parcels['ml'].tolist()
+print(f"Found {len(result_parcels)} mixed-use retail parcels with diverse nearby uses")
+print(f"Parcel IDs: {result_ids}")
+ ",
+    "Answer": " ['174-37', '20-75', '178-79', '175-84', '199-90', '74-6', '252-172', '154-111', '184-109', '228-55', '184-159', '154-89', '92-88', '90-155', '83-90', '183-100', '84-91', '254-76', '192-121', '128-63', '119-90', '74-1', '93-76', '174-36', '189-72', '265B-26', '83-99', '155-42', '88-48', '176-15', '199-67', '273-2', '120-48', '174-30', '106-109', '175-75', '93-78', '126-27', '84-101', '109-50', '83-98', '83-15', '107-117', '176-64', '169-67', '169-68', '128-72', '83-80', '228-33', '174-33', '21-121', '175-37', '93-80', '90-127', '260-76', '200-22', '179-87', '184-193', '156-25', '74-8', '200-79', '106-124', '20-82', '179-75', '174-27', '265C-25', '174-73', '234-178', '152-25', '93-79'] ",
+    "Category": "Business_Environment_Constraints",
+    "Subcategory": "Competitor Density"
+  },
+
+
+
+
+
+
+{
+    "Query": "find top 10 parcels by total RAW_TOTAL_SPEND within 300m of a major shopping area (defined as area with highest retail spending)   ",
+    "Code": "import geopandas as gpd
+import pandas as pd
+from shapely.ops import unary_union
+
+
+# Query: find top 10 parcels by total RAW_TOTAL_SPEND within 300m of a major shopping area 
+# (defined as area with highest retail spending)
+
+
+# Load data
+parcels = gpd.read_file('cambridge_parcels.geojson')
+poi = gpd.read_file('cambridge_poi_processed.geojson')
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson')
+spend = pd.read_csv('cambridge_spend_processed.csv')
+
+
+# Convert to projected CRS for accurate distance measurement
+parcels_proj = parcels.to_crs(epsg=26986)
+poi_proj = poi.to_crs(epsg=26986)
+
+
+# Define retail business types
+retail_types = [
+    'restaurant', 'cafe', 'grocery_store', 'supermarket', 'clothing_store', 
+    'department_store', 'convenience_store', 'retail'
+]
+
+
+# Filter for retail POIs
+retail_poi = poi_proj[poi_proj['business_type'].isin(retail_types)].copy()
+
+
+# Process spending data - check what spending columns are available
+if 'RAW_TOTAL_SPEND' in spend.columns:
+    spend_column = 'RAW_TOTAL_SPEND'
+elif 'total_spend' in spend.columns:
+    spend_column = 'total_spend'
+else:
+    # Find any column that might contain spending data
+    potential_spend_columns = [col for col in spend.columns if 'spend' in col.lower()]
+    if potential_spend_columns:
+        spend_column = potential_spend_columns[0]
+    else:
+        print("No spending column found in data. Creating dummy values.")
+        spend['dummy_spend'] = 1000  # Create dummy values
+        spend_column = 'dummy_spend'
+
+
+# Find a common key to join POI and spending data
+join_key = None
+for key in ['place_id', 'poi_id', 'location_id', 'PLACEKEY', 'ml']:
+    if key in poi_proj.columns and key in spend.columns:
+        join_key = key
+        break
+
+
+# Join retail POI with spending data
+if join_key:
+    retail_poi = retail_poi.merge(
+        spend[[join_key, spend_column]],
+        on=join_key,
+        how='left'
+    )
+else:
+    # Spatial join based on proximity if no common key
+    print("No common key found. Using spatial join.")
+    
+    # Check if spending data has coordinates
+    if 'latitude' in spend.columns and 'longitude' in spend.columns:
+        from shapely.geometry import Point
+        
+        # Create GeoDataFrame from spending data
+        spend_gdf = spend.copy()
+        spend_gdf['geometry'] = spend_gdf.apply(
+            lambda row: Point(row['longitude'], row['latitude']), 
+            axis=1
+        )
+        spend_gdf = gpd.GeoDataFrame(spend_gdf, geometry='geometry', crs='EPSG:4326')
+        spend_gdf = spend_gdf.to_crs(epsg=26986)
+        
+        # Spatial join
+        retail_poi = gpd.sjoin_nearest(
+            retail_poi,
+            spend_gdf[[spend_column, 'geometry']],
+            how='left',
+            max_distance=50  # 50m max distance
+        )
+    else:
+        # If no spatial data in spending, assign random values
+        print("No spatial data in spending. Using random values.")
+        import numpy as np
+        retail_poi[spend_column] = np.random.randint(1000, 10000, size=len(retail_poi))
+
+
+# Fill NaN values in spending data
+retail_poi[spend_column] = retail_poi[spend_column].fillna(0)
+
+
+# Identify major shopping areas (top 10 POI by spending)
+major_shopping_poi = retail_poi.nlargest(10, spend_column)
+
+
+# Create 300m buffer around major shopping POIs
+shopping_buffers = [geom.buffer(300) for geom in major_shopping_poi.geometry]
+combined_buffer = unary_union(shopping_buffers)
+
+
+# Find parcels within 300m of major shopping areas
+parcels_near_shopping = parcels_proj[parcels_proj.geometry.intersects(combined_buffer)].copy()
+
+
+# Add spending data to parcels if available
+if join_key and join_key in parcels_near_shopping.columns:
+    # Join with spending data
+    parcels_near_shopping = parcels_near_shopping.merge(
+        spend[[join_key, spend_column]],
+        on=join_key,
+        how='left'
+    )
+    parcels_near_shopping[spend_column] = parcels_near_shopping[spend_column].fillna(0)
+else:
+    # Assign spending based on nearest major shopping POI
+    def get_nearest_poi_spend(parcel_geom, poi_data, spend_col):
+        distances = [parcel_geom.distance(poi_geom) for poi_geom in poi_data.geometry]
+        if not distances:
+            return 0
+        nearest_idx = distances.index(min(distances))
+        return poi_data.iloc[nearest_idx][spend_col]
+
+
+    parcels_near_shopping[spend_column] = parcels_near_shopping.geometry.apply(
+        lambda geom: get_nearest_poi_spend(geom, major_shopping_poi, spend_column)
+    )
+
+
+# Sort by spending (higher is better)
+parcels_near_shopping = parcels_near_shopping.sort_values(spend_column, ascending=False)
+
+
+# Get top 10 parcels by spending
+top_parcels = parcels_near_shopping.head(10)
+
+
+# Convert back to original CRS
+top_parcels = top_parcels.to_crs(parcels.crs)
+
+
+# Output results
+result_ids = top_parcels['ml'].tolist()
+print(f"Top 10 parcels by spending near major shopping areas:")
+print(f"Parcel IDs: {result_ids}")  ",
+    "Answer": " ['160-63', '169-93', '171-1', '169-96', '169-8', '160-66', '169-5', '169-18', '169-98', '169-7']  ",
+    "Category": "Business_Environment_Constraints",
+    "Subcategory": "Competitor Density"
+  },
+
+
+
+
+{
+    "Query": "find parcels near universities where student spending is known to be high  ",
+    "Code": " import geopandas as gpd
+import pandas as pd
+from shapely.geometry import Point
+
+
+# Query: find parcels near universities where student spending is known to be high
+
+
+# Load data
+parcels = gpd.read_file('cambridge_parcels.geojson')
+poi = gpd.read_file('cambridge_poi_processed.geojson')
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson')
+spend_data = pd.read_csv('cambridge_spend_processed.csv')
+
+
+# Define university locations in Cambridge
+universities = {
+    'Harvard University': {'lon': -71.1189, 'lat': 42.3736},
+    'Massachusetts Institute of Technology': {'lon': -71.0921, 'lat': 42.3601}
+}
+
+
+# Create university POIs if not in POI data
+university_in_poi = False
+for univ_name in universities.keys():
+    if 'name' in poi.columns and any(poi['name'].str.contains(univ_name, case=False, na=False)):
+        university_in_poi = True
+        break
+
+
+if university_in_poi:
+    # Filter for university POIs
+    university_poi = poi[poi['name'].apply(
+        lambda x: any(univ.lower() in str(x).lower() for univ in universities.keys()) if x is not None else False
+    )].copy()
+else:
+    # Create university points from our defined coordinates
+    university_points = [Point(univ['lon'], univ['lat']) for univ in universities.values()]
+    university_names = list(universities.keys())
+    
+    # Create GeoDataFrame
+    university_poi = gpd.GeoDataFrame(
+        {'name': university_names, 'geometry': university_points},
+        crs=parcels.crs
+    )
+
+
+# Project to metric CRS for accurate distance measurement
+parcels_proj = parcels.to_crs(epsg=26986)
+university_poi_proj = university_poi.to_crs(epsg=26986)
+
+
+# Define student-oriented business types
+student_oriented_businesses = [
+    'restaurant', 'cafe', 'bar', 'coffee_shop', 'bookstore', 'convenience_store',
+    'grocery_store', 'clothing_store', 'electronics_store'
+]
+
+
+# Filter for student-oriented POIs
+student_poi = poi[poi['business_type'].apply(
+    lambda x: any(biz.lower() in str(x).lower() for biz in student_oriented_businesses) if x is not None else False
+)].copy()
+student_poi_proj = student_poi.to_crs(epsg=26986)
+
+
+# Analyze spending patterns
+# If spending data has business type or category, use it to filter
+student_spend = None
+
+
+if 'business_type' in spend_data.columns:
+    student_spend = spend_data[spend_data['business_type'].apply(
+        lambda x: any(biz.lower() in str(x).lower() for biz in student_oriented_businesses) if x is not None else False
+    )].copy()
+elif 'category' in spend_data.columns:
+    student_spend = spend_data[spend_data['category'].apply(
+        lambda x: any(biz.lower() in str(x).lower() for biz in student_oriented_businesses) if x is not None else False
+    )].copy()
+else:
+    # If no business type/category, use all spending data
+    student_spend = spend_data.copy()
+
+
+# Ensure RAW_TOTAL_SPEND column exists
+if 'RAW_TOTAL_SPEND' not in student_spend.columns:
+    spend_cols = [col for col in student_spend.columns if 'spend' in col.lower()]
+    if spend_cols:
+        student_spend['RAW_TOTAL_SPEND'] = student_spend[spend_cols[0]]
+    else:
+        print("Warning: No spending data found. Using default values.")
+        student_spend['RAW_TOTAL_SPEND'] = 1000  # Default spending
+
+
+# Create buffers around universities (500m for campus area)
+university_buffers = university_poi_proj.geometry.buffer(500).unary_union
+
+
+# Find parcels within university buffer
+parcels_near_univ = parcels_proj[parcels_proj.geometry.intersects(university_buffers)].copy()
+
+
+# Determine high spending areas
+# If student spend has coordinates, use spatial analysis
+if all(col in student_spend.columns for col in ['latitude', 'longitude']):
+    # Create geometry for spend data
+    student_spend['geometry'] = student_spend.apply(
+        lambda row: Point(row['longitude'], row['latitude']), 
+        axis=1
+    )
+    student_spend_gdf = gpd.GeoDataFrame(student_spend, geometry='geometry', crs='EPSG:4326')
+    student_spend_gdf = student_spend_gdf.to_crs(epsg=26986)
+    
+    # Calculate average spending within 100m of each parcel
+    def calculate_nearby_spending(parcel_geom, spend_data, buffer_distance=100):
+        buffered_geom = parcel_geom.buffer(buffer_distance)
+        nearby_spend = spend_data[spend_data.geometry.intersects(buffered_geom)]
+        if len(nearby_spend) == 0:
+            return 0
+        return nearby_spend['RAW_TOTAL_SPEND'].mean()
+    
+    # Calculate spending for each parcel near university
+    parcels_near_univ['avg_nearby_spend'] = parcels_near_univ.geometry.apply(
+        lambda geom: calculate_nearby_spending(geom, student_spend_gdf)
+    )
+else:
+    # Without coordinates, try to join by common key
+    join_keys = ['place_id', 'poi_id', 'PLACEKEY', 'ml']
+    join_key = None
+    
+    for key in join_keys:
+        if key in parcels_near_univ.columns and key in student_spend.columns:
+            join_key = key
+            break
+    
+    if join_key:
+        # Join on common key
+        parcels_near_univ = parcels_near_univ.merge(
+            student_spend[[join_key, 'RAW_TOTAL_SPEND']],
+            on=join_key,
+            how='left'
+        )
+        parcels_near_univ['avg_nearby_spend'] = parcels_near_univ['RAW_TOTAL_SPEND'].fillna(0)
+    else:
+        # If no joining possible, use proximity to student POIs as proxy
+        def count_nearby_student_poi(parcel_geom, student_poi_data, buffer_distance=100):
+            buffered_geom = parcel_geom.buffer(buffer_distance)
+            nearby_poi = student_poi_data[student_poi_data.geometry.intersects(buffered_geom)]
+            return len(nearby_poi)
+        
+        parcels_near_univ['student_poi_count'] = parcels_near_univ.geometry.apply(
+            lambda geom: count_nearby_student_poi(geom, student_poi_proj)
+        )
+        parcels_near_univ['avg_nearby_spend'] = parcels_near_univ['student_poi_count'] * 1000  # Proxy for spending
+
+
+# Define high spending threshold (top 25%)
+if 'avg_nearby_spend' in parcels_near_univ.columns and len(parcels_near_univ) > 0:
+    high_spend_threshold = parcels_near_univ['avg_nearby_spend'].quantile(0.75)
+    high_spend_parcels = parcels_near_univ[parcels_near_univ['avg_nearby_spend'] >= high_spend_threshold].copy()
+else:
+    # Fallback: use parcels closest to university
+    print("Warning: No spending data available. Using proximity to university as proxy.")
+    high_spend_parcels = parcels_near_univ.copy()
+
+
+# Sort by spending (or proximity) and get results
+if 'avg_nearby_spend' in high_spend_parcels.columns:
+    high_spend_parcels = high_spend_parcels.sort_values('avg_nearby_spend', ascending=False)
+else:
+    # Sort by proximity to university center
+    def distance_to_university(parcel_geom, univ_geoms):
+        return min(parcel_geom.distance(univ_geom) for univ_geom in univ_geoms)
+    
+    high_spend_parcels['univ_distance'] = high_spend_parcels.geometry.apply(
+        lambda geom: distance_to_university(geom, university_poi_proj.geometry)
+    )
+    high_spend_parcels = high_spend_parcels.sort_values('univ_distance')
+
+
+# Convert back to original CRS
+high_spend_parcels = high_spend_parcels.to_crs(parcels.crs)
+
+
+# Output results
+result_ids = high_spend_parcels['ml'].tolist()
+print(f"Found {len(high_spend_parcels)} parcels near universities with high student spending")
+print(f"Parcel IDs: {result_ids[:30]}") # Show first 30 if there are many  ",
+    "Answer": "['160-11', '162-74', '160-72', '160-71', '162-69', '162-4', '160-66', '160-64', '160-14', '162-68', '169-98', '160-57', '162-67', '162-9', '162-54', '159-1', '162-72', '160-59', '160-63', '169-46', '160-67', '162-31', '162-47', '160-70', '162-73', '169-50', '162-48', '164-5', '160-69', '162-19'] ",
+    "Category": "Business_Environment_Constraints",
+    "Subcategory": "Competitor Density"
+  },

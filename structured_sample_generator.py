@@ -3,10 +3,9 @@ import json
 import logging
 import random
 import time
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 import argparse
 from tqdm import tqdm
-from fine_tuned_rag_evaluator import SpatialRAGComponent
 from implementation.agent_framework import SpatialAnalysisAgent
 
 # Set up logging
@@ -15,12 +14,12 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 
-class StructuredSampleGenerator:
-    """Generate structured samples for spatial analysis queries."""
+class DataConstrainedSampleGenerator:
+    """Generate samples constrained to available datasets with improved column validation."""
 
     def __init__(self, data_dir: str, fine_tuned_model: str, openai_api_key: Optional[str] = None):
         """
-        Initialize the structured sample generator.
+        Initialize the sample generator with dataset constraints.
 
         Args:
             data_dir: Directory containing the geospatial datasets
@@ -31,9 +30,6 @@ class StructuredSampleGenerator:
         self.fine_tuned_model = fine_tuned_model
         self.openai_api_key = openai_api_key or os.environ.get(
             "OPENAI_API_KEY")
-
-        # Initialize RAG component
-        self.rag_component = SpatialRAGComponent(data_dir)
 
         # Load existing samples
         self.existing_samples = self._load_existing_samples()
@@ -46,8 +42,50 @@ class StructuredSampleGenerator:
             'spend': os.path.join(data_dir, 'cambridge_spend_processed.csv')
         }
 
+        # Known dataset schema to constrain queries
+        self.dataset_schema = {
+            'parcels': {
+                'columns': ['ml', 'use_code', 'land_area', 'geometry'],
+                'filters': ['commercial', 'retail', 'office', 'mixed-use', 'residential', 'vacant']
+            },
+            'poi': {
+                # POI doesn't have 'ml' column
+                'columns': ['business_type', 'geometry', 'PLACEKEY'],
+                'filters': ['restaurant', 'subway']
+            },
+            'census': {
+                'columns': ['pct_adv_deg', 'pct_18_64'],
+                'filters': ['education', 'demographics']
+            },
+            'spend': {
+                # Correct column name for spending
+                'columns': ['PLACEKEY', 'RAW_TOTAL_SPEND'],
+                'filters': ['consumer spending']
+            }
+        }
+
+        # Mapping of incorrect column names to correct ones
+        self.column_corrections = {
+            # POI dataset corrections
+            "'ml'": "'business_type'",  # POI doesn't have ml column
+            "'category'": "'business_type'",
+            "'type'": "'business_type'",
+            "'name'": "'business_type'",
+            "'poi_type'": "'business_type'",
+
+            # Parcels dataset corrections
+            "'land_use'": "'use_code'",
+            "'area'": "'land_area'",
+            "'zoning'": "'use_code'",
+
+            # Spending dataset corrections
+            "'estimated_spend'": "'RAW_TOTAL_SPEND'",
+            "'spending'": "'RAW_TOTAL_SPEND'",
+            "'consumer_spending'": "'RAW_TOTAL_SPEND'"
+        }
+
         logger.info(
-            f"Structured sample generator initialized with {len(self.existing_samples)} existing samples")
+            f"Dataset-constrained sample generator initialized with {len(self.existing_samples)} existing samples")
 
     def _load_existing_samples(self) -> List[Dict[str, Any]]:
         """
@@ -71,7 +109,7 @@ class StructuredSampleGenerator:
 
     def generate_structured_queries(self, category: str, subcategory: str, count: int) -> List[str]:
         """
-        Generate structured queries for a specific category and subcategory.
+        Generate structured queries constrained to available dataset fields.
 
         Args:
             category: Main constraint category
@@ -82,7 +120,8 @@ class StructuredSampleGenerator:
             List of generated query strings
         """
         # Create detailed prompt for the specified category and subcategory
-        prompt = self._create_category_prompt(category, subcategory, count)
+        prompt = self._create_constrained_category_prompt(
+            category, subcategory, count)
 
         # Create a fresh agent for query generation
         agent = SpatialAnalysisAgent(
@@ -105,16 +144,20 @@ class StructuredSampleGenerator:
                 json_str = message[json_start:json_end]
                 queries = json.loads(json_str)
 
-                # Filter out queries that are too similar to existing queries
+                # Filter out queries with unavailable fields
+                filtered_queries = self._filter_queries_by_available_data(
+                    queries)
+
+                # Further filter for similarity to existing queries
                 existing_queries = [sample["Query"]
                                     for sample in self.existing_samples]
                 filtered_queries = [
-                    q for q in queries
+                    q for q in filtered_queries
                     if not any(self._similarity(q, eq) > 0.8 for eq in existing_queries)
                 ]
 
                 logger.info(
-                    f"Generated {len(filtered_queries)} unique {category}/{subcategory} queries")
+                    f"Generated {len(filtered_queries)} valid {category}/{subcategory} queries")
                 return filtered_queries[:count]  # Limit to requested count
             else:
                 logger.error("Could not find JSON array in response")
@@ -123,9 +166,37 @@ class StructuredSampleGenerator:
             logger.error(f"Error extracting queries: {e}")
             return []
 
-    def _create_category_prompt(self, category: str, subcategory: str, count: int) -> str:
+    def _filter_queries_by_available_data(self, queries: List[str]) -> List[str]:
         """
-        Create a detailed prompt for generating queries in a specific category.
+        Filter queries to only include those that reference available dataset fields.
+
+        Args:
+            queries: List of queries to filter
+
+        Returns:
+            Filtered list of queries
+        """
+        # Disallowed terms - information not in datasets
+        disallowed_terms = [
+            "parking space", "parking spaces", "parking lot",
+            "floor", "stories", "building height",
+            "owner", "ownership", "tenant", "lease",
+            "permit", "permits", "zoning variance",
+            "median income", "median household income"  # Added to disallowed terms
+        ]
+
+        # Filter out queries that mention disallowed terms
+        filtered = []
+        for query in queries:
+            query_lower = query.lower()
+            if not any(term in query_lower for term in disallowed_terms):
+                filtered.append(query)
+
+        return filtered
+
+    def _create_constrained_category_prompt(self, category: str, subcategory: str, count: int) -> str:
+        """
+        Create a prompt for generating queries, with dataset constraints emphasized.
 
         Args:
             category: Main constraint category
@@ -139,227 +210,210 @@ class StructuredSampleGenerator:
         existing_queries = [sample["Query"]
                             for sample in self.existing_samples]
         example_queries = random.sample(
-            existing_queries, min(5, len(existing_queries)))
+            existing_queries, min(5, len(existing_queries))) if existing_queries else []
 
-        # Basic prompt structure
+        # Basic prompt structure with dataset constraints
         base_prompt = f"""You are an expert in geospatial analysis and site selection for commercial real estate.
 
 Here are some examples of site selection queries:
 {json.dumps(example_queries, indent=2)}
 
+IMPORTANT: You must ONLY create queries that use data from these Cambridge, MA datasets:
+1. Parcels dataset: Fields include 'ml' (parcel ID), 'use_code' (for land use classification), 'land_area' (size in sq ft)
+2. POI dataset: Fields include 'business_type' (type of business/POI) - NOTE: POI does NOT have an 'ml' column
+3. Census dataset: Fields include 'pct_adv_deg' (% with advanced degrees), 'pct_18_64' (% aged 18-64)
+4. Spending dataset: Contains 'RAW_TOTAL_SPEND' (consumer spending amount) - NOT 'estimated_spend'
+
+DO NOT create queries about parking spaces, building height, floor count, ownership, median income, or other data NOT in these datasets.
+
 I need you to create {count} new queries specifically for the category: "{category}" and subcategory: "{subcategory}"."""
 
         # Add category-specific details
-        if category == "Simple Constraints":
-            if subcategory == "Single Hard Constraint":
-                return base_prompt + """
-The queries should have exactly ONE hard constraint like:
-- Size requirements (e.g., "larger than X square feet")
-- Specific zoning/use code (e.g., "zoned for retail")
-- Exact location criteria (e.g., "within X meters of [location]")
-
-Each query should focus on finding parcels with ONE clear, non-negotiable requirement.
+        full_prompt = base_prompt + self._get_category_specific_prompt(category, subcategory) + """
+Remember:
+- ONLY reference data fields available in the datasets mentioned above
+- NO queries about parking, building height, floors, ownership, median income, or other unavailable data
+- Focus on valid spatial constraints and the available fields
 
 Return ONLY a JSON array of query strings, with no explanations or additional text."""
 
+        return full_prompt
+
+    def _get_category_specific_prompt(self, category: str, subcategory: str) -> str:
+        """Get category-specific prompt section."""
+        if category == "Simple_Constraints":
+            if subcategory == "Single Hard Constraint":
+                return """
+The queries should have exactly ONE hard constraint like:
+- Size requirements (e.g., "larger than X square feet")
+- Specific use code (e.g., "zoned for retail")
+- Exact location criteria (e.g., "within X meters of [location]")
+
+Each query should focus on finding parcels with ONE clear, non-negotiable requirement.
+"""
             elif subcategory == "Single Soft Constraint":
-                return base_prompt + """
+                return """
 The queries should have exactly ONE soft constraint like:
 - Prioritizing certain areas (e.g., "prioritizing areas with higher foot traffic")
 - Preference criteria (e.g., "preferably near residential neighborhoods")
 - Optimization goals (e.g., "with the highest consumer spending")
 
 Each query should use language indicating preference rather than requirement (e.g., "prioritizing," "preferably," "ideally").
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "Two Hard Constraints":
-                return base_prompt + """
+                return """
 The queries should have exactly TWO hard constraints combined with "and" like:
 - "larger than X square feet AND within Y meters of [location]"
 - "zoned for retail AND with at least Z parking spaces"
 
 Each query should have two clear, non-negotiable requirements that both must be satisfied.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "One Hard + One Soft Constraint":
-                return base_prompt + """
+                return """
 The queries should combine ONE hard constraint and ONE soft constraint like:
 - "larger than X square feet, preferably in areas with high foot traffic"
-- "within Y meters of subway stations, prioritizing areas with higher income levels"
+- "within Y meters of subway stations, prioritizing areas with higher educational attainment"
 
 Each query should have one clear requirement and one preference criterion.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
-        elif category == "Complex Constraints":
+"""
+        elif category == "Complex_Constraints":
             if subcategory == "Multiple Hard Constraints":
-                return base_prompt + """
+                return """
 The queries should have THREE OR MORE hard constraints like:
-- "larger than X square feet, within Y meters of subway stations, and with Z parking spaces"
-- "zoned for retail, not within 500m of competitors, and in census tracts with median income above $40,000"
+- "larger than X square feet, within Y meters of subway stations, and with high educational attainment"
+- "zoned for retail, not within 500m of competitors, and in census tracts with high percentage of working-age residents"
 
 Each query should have at least three non-negotiable requirements that all must be satisfied.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "Multiple Mixed Constraints":
-                return base_prompt + """
+                return """
 The queries should have at least TWO hard constraints AND TWO soft constraints like:
-- "larger than X square feet and within Y meters of subway stations, preferably in areas with high foot traffic and low competition"
-- "zoned for retail and with Z parking spaces, ideally in areas with high educational attainment and near residential neighborhoods"
+- "larger than X square feet and within Y meters of subway stations, preferably in areas with high consumer spending and diverse land uses"
+- "zoned for retail and with active business licenses, ideally in areas with high educational attainment and near residential neighborhoods"
 
 Each query should clearly distinguish between requirements and preferences.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "Logical Combinations":
-                return base_prompt + """
+                return """
 The queries should use complex logical combinations (AND, OR, NOT) like:
 - "either office space larger than X sq ft OR retail space within Y meters of residential areas"
-- "commercial parcels NOT within Z meters of industrial zones AND either near transit OR with high foot traffic"
+- "commercial parcels NOT within Z meters of industrial zones AND either near transit OR with high consumer spending"
 
 Each query should use logical operators to create complex selection criteria.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "Conditional Constraints":
-                return base_prompt + """
+                return """
 The queries should use conditional (if-then) logic like:
 - "parcels that, if larger than X sq ft, must be within Y meters of transit, or if smaller, must be within Z meters of residential areas"
-- "mixed-use parcels that, if north of [location], must have retail on ground floor, otherwise must have at least X sq ft of commercial space"
+- "mixed-use parcels that, if north of [location], must have retail use code, otherwise must have at least X sq ft of commercial space"
 
 Each query should specify different criteria depending on some property of the parcel.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
-        elif category == "Spatial Constraints":
+"""
+        elif category == "Spatial_Constraints":
             if subcategory == "Simple Buffer Queries":
-                return base_prompt + """
+                return """
 The queries should use simple buffer/distance criteria like:
 - "within X meters of [location/feature]"
 - "at least Y meters away from [location/feature]"
 - "between X and Y meters from [location/feature]"
 
 Each query should specify a clear spatial relationship based on distance.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "Nested Spatial Relationships":
-                return base_prompt + """
+                return """
 The queries should use nested or complex spatial relationships like:
 - "within X meters of [feature A] AND outside Y meters of [feature B]"
 - "parcels that intersect with buffer zones of [feature A] but are at least Z meters from [feature B]"
 - "within X meters of [feature A] OR within Y meters of [feature B], but not within Z meters of [feature C]"
 
 Each query should combine multiple spatial relationships in a nested or complex manner.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
-        elif category == "Business Environment Constraints":
+"""
+        elif category == "Business_Environment_Constraints":
             if subcategory == "Competitor Density":
-                return base_prompt + """
+                return """
 The queries should focus on competitor density/proximity like:
 - "with no more than X competing businesses within Y meters"
 - "at least Z meters away from nearest competitor of same type"
 - "in areas with the lowest density of competing [business type]"
 
 Each query should specify criteria related to the presence or absence of competing businesses.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "Land Use Mix":
-                return base_prompt + """
+                return """
 The queries should focus on the mix of surrounding land uses like:
 - "in areas with diverse mix of residential and commercial uses within X meters"
 - "surrounded by at least Y different land use types within Z meters"
 - "in predominantly [land use type] areas but with some [other land use type] nearby"
 
 Each query should specify criteria related to the diversity or composition of surrounding land uses.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "Consumer Spending Patterns":
-                return base_prompt + """
+                return """
 The queries should focus on consumer spending patterns like:
 - "in areas with highest average consumer spending"
-- "where spending on [category] is at least X% above city average"
-- "top Y parcels ranked by total consumer spending within Z meters"
+- "where RAW_TOTAL_SPEND is above city average"
+- "top Y parcels ranked by total RAW_TOTAL_SPEND within Z meters"
 
 Each query should specify criteria related to consumer spending levels or patterns.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
-        elif category == "Demographic Constraints":
+"""
+        elif category == "Demographic_Constraints":
             if subcategory == "Income Levels":
-                return base_prompt + """
-The queries should focus on income-related demographics like:
-- "in census tracts with median income above $X"
-- "in areas where at least Y% of households earn more than $Z"
-- "ranked by neighborhood affluence level"
+                # Modified to avoid using median income
+                return """
+The queries should focus on demographic characteristics like:
+- "in census tracts with high educational attainment"
+- "in areas where at least Y% of residents are aged 18-64"
+- "in neighborhoods with highest proportion of advanced degrees"
 
-Each query should specify criteria related to income levels of the surrounding population.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+Each query should specify criteria related to demographic characteristics of the surrounding population.
+"""
             elif subcategory == "Target Demographic Match":
-                return base_prompt + """
+                return """
 The queries should focus on specific demographic targets like:
-- "in areas with at least X% of residents aged 25-34"
+- "in areas with at least X% of residents aged 18-64"
 - "where percentage of residents with advanced degrees is above Y%"
-- "in neighborhoods with highest concentration of [demographic group]"
+- "in neighborhoods with highest concentration of working-age adults"
 
 Each query should specify criteria related to the demographic composition of the surrounding population.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
-        elif category == "Logical Structure Constraints":
+"""
+        elif category == "Logical_Structure_Constraints":
             if subcategory == "AND Combinations":
-                return base_prompt + """
+                return """
 The queries should use explicit AND logical combinations like:
 - "parcels that are [criterion A] AND [criterion B] AND [criterion C]"
 - "properties meeting ALL of the following criteria: [list criteria]"
 
 Each query should require that multiple criteria be satisfied simultaneously.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "OR Combinations":
-                return base_prompt + """
+                return """
 The queries should use explicit OR logical combinations like:
 - "parcels that are either [criterion A] OR [criterion B]"
 - "properties meeting ANY of the following criteria: [list criteria]"
 
 Each query should allow multiple alternative criteria for selection.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "Nested Logical Structures":
-                return base_prompt + """
+                return """
 The queries should use nested logical expressions like:
 - "parcels that are [criterion A] AND (either [criterion B] OR [criterion C])"
 - "properties that are either ([criterion A] AND [criterion B]) OR ([criterion C] AND [criterion D])"
 
 Each query should use parentheses or clear language to create nested logical structures.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
+"""
             elif subcategory == "Conditional Structures":
-                return base_prompt + """
+                return """
 The queries should use if-then conditions like:
 - "parcels where, if [condition A], then [criterion B] applies, otherwise [criterion C] applies"
 - "properties that must satisfy [criterion A] if they are [condition B], but must satisfy [criterion C] if they are [condition D]"
 
 Each query should specify different criteria based on conditional properties.
+"""
 
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
-
-        # Default case
-        return base_prompt + f"""
-Please create {count} diverse queries that fit the {category}/{subcategory} pattern. Make them realistic for commercial site selection in Cambridge, MA.
-
-Return ONLY a JSON array of query strings, with no explanations or additional text."""
+        # Default prompt section if not specified
+        return f"""
+Please create queries that fit the {category}/{subcategory} pattern. Make them realistic for commercial site selection in Cambridge, MA using ONLY the available data fields.
+"""
 
     def _similarity(self, query1: str, query2: str) -> float:
         """
@@ -381,9 +435,111 @@ Return ONLY a JSON array of query strings, with no explanations or additional te
 
         return intersection / union if union > 0 else 0
 
+    def _fix_column_references(self, code: str) -> str:
+        """
+        Fix incorrect column references in the code.
+        This is critical to prevent KeyError exceptions.
+
+        Args:
+            code: Original code
+
+        Returns:
+            Fixed code with corrected column references
+        """
+        fixed_code = code
+
+        # Apply all column corrections
+        for wrong, correct in self.column_corrections.items():
+            fixed_code = fixed_code.replace(wrong, correct)
+
+        # Fix a specific error pattern: poi[poi['ml'] references
+        fixed_code = fixed_code.replace(
+            "poi[poi['poi_type']", "poi[poi['business_type']")
+        fixed_code = fixed_code.replace(
+            "poi_proj[poi_proj['poi_type']", "poi_proj[poi_proj['business_type']")
+
+        fixed_code = fixed_code.replace(
+            "poi[poi['ml']", "poi[poi['business_type']")
+        fixed_code = fixed_code.replace(
+            "poi_proj[poi_proj['ml']", "poi_proj[poi_proj['business_type']")
+
+        return fixed_code
+
+    def _fix_common_imports(self, code: str) -> str:
+        """
+        Fix common import errors without changing the visible code.
+
+        Args:
+            code: Original code
+
+        Returns:
+            Code with fixed imports for execution only
+        """
+        # Common imports to check for
+        needed_imports = {
+            "pd": "import pandas as pd",
+            "np": "import numpy as np",
+            "gpd": "import geopandas as gpd",
+            "Point": "from shapely.geometry import Point",
+            "LineString": "from shapely.geometry import LineString",
+            "unary_union": "from shapely.ops import unary_union"
+        }
+
+        # Add any missing imports at the beginning
+        imports_to_add = []
+
+        for module_name, import_statement in needed_imports.items():
+            # Check if module is used but not imported
+            if module_name in code and import_statement not in code:
+                imports_to_add.append(import_statement)
+
+        # Add all missing imports at the beginning
+        if imports_to_add:
+            import_block = "\n".join(imports_to_add) + "\n\n"
+            fixed_code = import_block + code
+            return fixed_code
+
+        return code
+
+    def _fix_code_for_execution(self, code: str) -> str:
+        """
+        Apply multiple fixes to make code more likely to execute successfully.
+
+        Args:
+            code: Original code
+
+        Returns:
+            Fixed code for execution
+        """
+        # Fix imports
+        fixed_code = self._fix_common_imports(code)
+
+        # Fix column references
+        fixed_code = self._fix_column_references(fixed_code)
+
+        # Add try-except block for better error handling
+        if "try:" not in fixed_code:
+            indented_code = "\n    ".join(fixed_code.split("\n"))
+            fixed_code = f"""try:
+    {indented_code}
+except Exception as e:
+    print(f"Error: {{e}}")
+    # Try to print partial results if available
+    try:
+        if 'result_parcels' in locals():
+            print(result_parcels['ml'].tolist())
+        elif 'final_parcels' in locals():
+            print(final_parcels['ml'].tolist())
+    except:
+        print("No partial results available")
+"""
+
+        return fixed_code
+
     def generate_sample(self, query: str, category: str, subcategory: str) -> Dict[str, Any]:
         """
-        Generate a complete sample (Query, Code, Answer) for a given query.
+        Generate a sample with Query, Code, Answer (null if code has bugs).
+        Automatically fixes common import errors.
 
         Args:
             query: The query string
@@ -393,52 +549,86 @@ Return ONLY a JSON array of query strings, with no explanations or additional te
         Returns:
             Dictionary with Query, Code, Answer fields
         """
-        # Enhance query with RAG
-        enhanced_query = self.rag_component.enhance_prompt(query)
+        # Add dataset schema information to the prompt
+        schema_prompt = """You are a commercial site selection assistant that creates Python code to analyze geospatial data in Cambridge, MA.
+Generate executable GeoPandas code to find parcels matching the criteria.
 
-        # System prompt for code generation
-        system_prompt = """You are a commercial site selection assistant that creates Python code to analyze geospatial data in Cambridge, MA.
-Generate executable GeoPandas code to find parcels matching the criteria."""
+AVAILABLE DATASETS - IMPORTANT COLUMN INFORMATION:
+1. Parcels ('cambridge_parcels.geojson'):
+   - 'ml': Parcel ID (string) - ALWAYS use this for the final result
+   - 'use_code': Land use code (string) - NOT 'zoning' or 'land_use'
+   - 'land_area': Size in square feet (numeric) - NOT 'area' or 'size'
+   
+2. POI ('cambridge_poi_processed.geojson'):
+   - 'business_type': Type of business/POI - NOT 'category', 'type', or 'name'
+   - 'geometry': Spatial location
+   - 'PLACEKEY': Identifier for joining with spending data
+   - NOTE: POI dataset does NOT have 'ml' column like parcels does
+   
+3. Census ('cambridge_census_cambridge_pct.geojson'):
+   - 'pct_adv_deg': % with advanced degrees
+   - 'pct_18_64': % aged 18-64
+   (Note: No median_income field)
+
+4. Spending ('cambridge_spend_processed.csv'):
+   - 'PLACEKEY': Join key with POI data
+   - 'RAW_TOTAL_SPEND': Consumer spending amount - NOT 'estimated_spend'
+
+IMPORTANT: Always include all necessary imports at the beginning of your code."""
 
         # Create agent for code generation
         agent = SpatialAnalysisAgent(
             data_dir=self.data_dir,
             model_name=self.fine_tuned_model,
             openai_api_key=self.openai_api_key,
-            system_prompt=system_prompt
+            system_prompt=schema_prompt
         )
 
         # Generate code for the query
-        result = agent.run_conversation(enhanced_query)
+        result = agent.run_conversation(query)
 
-        # Check if code was generated and executed successfully
-        if (result.get("data") and
-            result["data"].get("code") and
-                result["data"].get("parcel_ids")):
+        # Always include the code, even if it has bugs
+        if result.get("data") and result["data"].get("code"):
+            original_code = result["data"]["code"]
 
-            code = result["data"]["code"]
-            parcel_ids = result["data"]["parcel_ids"]
+            # Add fixes for common errors
+            fixed_code = self._fix_code_for_execution(original_code)
 
-            # Create the sample dictionary
-            sample = {
-                "Query": query,
-                "Code": code,
-                "Answer": json.dumps(parcel_ids),
-                "Category": category,
-                "Subcategory": subcategory
-            }
+            # Try to execute the code, but don't worry if it fails
+            try:
+                success, output, parcel_ids = agent.execute_code(fixed_code)
+
+                # Create the sample dictionary
+                sample = {
+                    "Query": query,
+                    "Code": original_code,  # Always keep the original code
+                    "Answer": json.dumps(parcel_ids) if success else None,
+                    "Category": category,
+                    "Subcategory": subcategory
+                }
+            except Exception as e:
+                logger.warning(f"Code execution error: {str(e)}")
+                # Even with execution failure, still include the code with null answer
+                sample = {
+                    "Query": query,
+                    "Code": original_code,  # Always keep the original code
+                    "Answer": None,
+                    "Category": category,
+                    "Subcategory": subcategory
+                }
 
             logger.info(
-                f"Successfully generated sample for {category}/{subcategory}: {query[:50]}...")
+                f"Generated sample for {category}/{subcategory}: {query[:50]}...")
             return sample
         else:
             logger.warning(
-                f"Failed to generate complete sample for {category}/{subcategory}: {query}")
+                f"Failed to generate code for {category}/{subcategory}: {query}")
             return None
 
     def generate_samples_by_category(self, output_dir: str, counts: Dict[str, Dict[str, int]]) -> Dict[str, List[Dict[str, Any]]]:
         """
         Generate samples according to specified counts by category and subcategory.
+        Saves category files first, then combines them at the end.
 
         Args:
             output_dir: Directory to save generated samples
@@ -449,18 +639,15 @@ Generate executable GeoPandas code to find parcels matching the criteria."""
         """
         os.makedirs(output_dir, exist_ok=True)
 
-        # Initialize results container
-        all_samples = {}
+        # Initialize results container for each category
+        category_samples = {}
+        for category in counts.keys():
+            category_samples[category] = []
+
         total_generated = 0
 
         # Generate samples for each category and subcategory
         for category, subcategories in counts.items():
-            category_samples = []
-
-            # Create directory for category
-            category_dir = os.path.join(output_dir, category.replace(" ", "_"))
-            os.makedirs(category_dir, exist_ok=True)
-
             logger.info(f"Generating samples for category: {category}")
 
             for subcategory, count in subcategories.items():
@@ -473,6 +660,11 @@ Generate executable GeoPandas code to find parcels matching the criteria."""
                 # Generate queries for this subcategory
                 queries = self.generate_structured_queries(
                     category, subcategory, count * 2)  # Generate extra for potential failures
+
+                if not queries:
+                    logger.warning(
+                        f"No valid queries generated for {category}/{subcategory}")
+                    continue
 
                 # Generate samples for queries
                 subcategory_samples = []
@@ -488,44 +680,49 @@ Generate executable GeoPandas code to find parcels matching the criteria."""
 
                     # Add successful samples to our list
                     if sample:
+                        # Store this sample for this category
+                        category_samples[category].append(sample)
                         subcategory_samples.append(sample)
-                        category_samples.append(sample)
                         successes += 1
                         total_generated += 1
 
                     # Add a delay to avoid rate limits
                     time.sleep(2)
 
-                # Save subcategory samples
-                subcategory_file = os.path.join(
-                    category_dir, f"{subcategory.replace(' ', '_')}.json")
-                with open(subcategory_file, 'w') as f:
-                    json.dump(subcategory_samples, f, indent=2)
-
                 logger.info(
                     f"Generated {len(subcategory_samples)}/{count} samples for {category}/{subcategory}")
 
-            # Save category samples
-            category_file = os.path.join(
-                output_dir, f"{category.replace(' ', '_')}.json")
-            with open(category_file, 'w') as f:
-                json.dump(category_samples, f, indent=2)
+            # Save category samples immediately after completion - THIS IS KEY
+            if category_samples[category]:
+                category_file = os.path.join(output_dir, f"{category}.json")
+                with open(category_file, 'w') as f:
+                    json.dump(category_samples[category], f, indent=2)
+                logger.info(
+                    f"Saved {len(category_samples[category])} samples to {category_file}")
+            else:
+                logger.warning(f"No samples generated for category {category}")
 
-            all_samples[category] = category_samples
+        # Now save all samples combined AFTER all categories are done
+        all_samples = []
+        for category_list in category_samples.values():
+            all_samples.extend(category_list)
 
-        # Save all samples
-        all_samples_file = os.path.join(output_dir, "all_samples.json")
-        with open(all_samples_file, 'w') as f:
-            json.dump([sample for category_samples in all_samples.values()
-                      for sample in category_samples], f, indent=2)
+        if all_samples:  # Only save if we have samples
+            all_samples_file = os.path.join(output_dir, "all_samples.json")
+            with open(all_samples_file, 'w') as f:
+                json.dump(all_samples, f, indent=2)
+            logger.info(
+                f"Saved {len(all_samples)} total samples to {all_samples_file}")
+        else:
+            logger.error("No samples were generated!")
 
         logger.info(f"Generated {total_generated} total samples")
-        return all_samples
+        return category_samples
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate structured spatial analysis samples")
+        description="Generate structured spatial analysis samples constrained to available datasets")
 
     parser.add_argument("--data_dir", type=str, default="../data",
                         help="Directory containing the data files")
@@ -548,40 +745,40 @@ def main():
 
     args = parser.parse_args()
 
-    # Initialize sample generator
-    generator = StructuredSampleGenerator(
+    # Initialize dataset-constrained sample generator
+    generator = DataConstrainedSampleGenerator(
         data_dir=args.data_dir,
         fine_tuned_model=args.model
     )
 
     # Set up sample counts by category and subcategory
     sample_counts = {
-        "Simple Constraints": {
+        "Simple_Constraints": {
             "Single Hard Constraint": args.simple_count // 4 + (args.simple_count % 4 > 0),
             "Single Soft Constraint": args.simple_count // 4 + (args.simple_count % 4 > 1),
             "Two Hard Constraints": args.simple_count // 4 + (args.simple_count % 4 > 2),
             "One Hard + One Soft Constraint": args.simple_count // 4
         },
-        "Complex Constraints": {
+        "Complex_Constraints": {
             "Multiple Hard Constraints": args.complex_count // 4 + (args.complex_count % 4 > 0),
             "Multiple Mixed Constraints": args.complex_count // 4 + (args.complex_count % 4 > 1),
             "Logical Combinations": args.complex_count // 4 + (args.complex_count % 4 > 2),
             "Conditional Constraints": args.complex_count // 4
         },
-        "Spatial Constraints": {
+        "Spatial_Constraints": {
             "Simple Buffer Queries": args.spatial_count // 2 + (args.spatial_count % 2),
             "Nested Spatial Relationships": args.spatial_count // 2
         },
-        "Business Environment Constraints": {
+        "Business_Environment_Constraints": {
             "Competitor Density": args.business_count // 3 + (args.business_count % 3 > 0),
             "Land Use Mix": args.business_count // 3 + (args.business_count % 3 > 1),
             "Consumer Spending Patterns": args.business_count // 3
         },
-        "Demographic Constraints": {
+        "Demographic_Constraints": {
             "Income Levels": args.demographic_count // 2 + (args.demographic_count % 2),
             "Target Demographic Match": args.demographic_count // 2
         },
-        "Logical Structure Constraints": {
+        "Logical_Structure_Constraints": {
             "AND Combinations": args.logical_count // 4 + (args.logical_count % 4 > 0),
             "OR Combinations": args.logical_count // 4 + (args.logical_count % 4 > 1),
             "Nested Logical Structures": args.logical_count // 4 + (args.logical_count % 4 > 2),
@@ -601,11 +798,22 @@ if __name__ == "__main__":
 
 # # python structured_sample_generator.py \
 #   --model ft:gpt-4o-mini-2024-07-18:mit:spatial-agent-20250505-021001:BTjW7EkG \
-#   --data_dir ../data \
-#   --output_dir ../generated_samples \
-#   --simple_count 100 \
-#   --complex_count 100 \
-#   --spatial_count 50 \
-#   --business_count 50 \
-#   --demographic_count 50 \
-#   --logical_count 50
+#   --data_dir data \
+#   --output_dir generated_samples \
+#   --simple_count 55 \
+#   --complex_count 55 \
+#   --spatial_count 30 \
+#   --business_count 30 \
+#   --demographic_count 20 \
+#   --logical_count 20
+
+# # python structured_sample_generator.py \
+#   --model ft:gpt-4o-mini-2024-07-18:mit:spatial-agent-20250505-021001:BTjW7EkG \
+#   --data_dir data \
+#   --output_dir generated_samples \
+#   --simple_count 2 \
+#   --complex_count 2 \
+#   --spatial_count 1 \
+#   --business_count 1 \
+#   --demographic_count 1 \
+#   --logical_count 1

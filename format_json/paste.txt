@@ -1,0 +1,321 @@
+﻿{
+    "Query": "find retail parcels that are within 300 meters of a subway station.",
+    "Code": " import geopandas as gpd
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+
+
+# Define subway station locations (longitude, latitude)
+subway_coords = [
+    (-71.1189, 42.3736),  # Harvard Square
+    (-71.1032, 42.3656),  # Central Square
+    (-71.0865, 42.3625),  # Kendall/MIT
+    (-71.1226, 42.3782),  # Porter Square
+    (-71.1429, 42.3954)   # Alewife
+]
+
+
+# Create GeoDataFrame for subway stations
+subway_gdf = gpd.GeoDataFrame(
+    geometry=gpd.points_from_xy(
+        [lon for lon, lat in subway_coords],
+        [lat for lon, lat in subway_coords]
+    ),
+    crs='EPSG:4326'
+)
+
+
+# Project to metric CRS for spatial buffer
+parcels_proj = parcels.to_crs(epsg=26986)
+subway_proj = subway_gdf.to_crs(epsg=26986)
+
+
+# Filter for retail parcels
+retail_codes = ['323', '324', '325', '326', '327', '330']
+retail_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(retail_codes)]
+
+
+# Create 300m buffer and find intersecting parcels
+subway_buffer = subway_proj.buffer(300).unary_union
+retail_near_subway = retail_parcels[retail_parcels.geometry.intersects(subway_buffer)]
+
+
+# Return parcel IDs
+result_ids = retail_near_subway.sort_values('ml')['ml'].tolist()
+print(result_ids)
+  ",
+    "Answer": " ['105-68', '105-82', '106-109', '106-124', '107-117', '107-9', '133-12', '133-52', '159-2', '160-63', '160-66', '160-76', '160-83', '160-84', '160-85', '162-18', '162-19', '162-26', '162-29', '162-54', '169-46', '169-47', '169-67', '169-68', '169-7', '169-86', '90-125', '90-127', '90-155', '90-162', '91-191', '92-88', '93-76', '93-78', '93-79', '93-80']  ",
+    "Category": "Spatial_Constraints",
+    "Subcategory": "Simple Buffer Queries"
+  },
+
+
+{
+    "Query": "find parcels that are at least 500 meters away from any restaurant.   ",
+    "Code": " import geopandas as gpd
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+poi = gpd.read_file('data/cambridge_poi_processed.geojson')
+
+
+# Define restaurant types
+restaurant_keywords = ['restaurant', 'cafe', 'fast_food', 'diner', 'pizzeria', 'bakery']
+
+
+# Project CRS
+parcels_proj = parcels.to_crs(epsg=26986)
+poi_proj = poi.to_crs(epsg=26986)
+
+
+# Filter for restaurant POIs
+restaurants = poi_proj[poi_proj['business_type'].str.lower().isin(restaurant_keywords)]
+
+
+# Buffer restaurants and find parcels NOT intersecting
+restaurant_buffer = restaurants.buffer(500).unary_union
+parcels_far = parcels_proj[~parcels_proj.geometry.intersects(restaurant_buffer)]
+
+
+# Output
+result_ids = parcels_far.sort_values('ml')['ml'].tolist()
+print(result_ids)
+  ",
+    "Answer": " ['201.5-21', '201.5-39', '201.5-60', '201.5-72', '201.5-73', '201.5-77', '201.5-80', '242-33', '242-34', '242A-100', '242A-112', '242A-126', '242A-127', '242A-69', '246-1019', '246A-14', '246A-30', '246A-31', '246A-35', '246A-36', '246A-37', '246A-38', '246A-41', '246A-42', '246A-44', '246A-46', '246A-47', '246A-48', '246A-49', '246A-50', '246A-51', '246A-52', '246A-53', '246A-54', '246A-55', '246A-56', '246A-57', '246A-59', '247-1', '247-123', '247-138', '247-139', '247-155', '247-158', '247-189', '247-87', '247-91', '247-92', '247-93', '249-204', '249-205', '249-50', '250-138', '250-139', '250-141', '250-16', '250-215', '250-221', '250-223', '250-224', '250-23', '250-29', '250-30', '250-31', '250-39', '250-40', '251-206', '251-250', '251-251', '251-39', '251-40', '251-41', '251-49', '251-50', '256-104', '256-105', '256-46', '256-6', '256-65', '256-66', '256-67', '256-7', '256-8', '256-87', '256-88', '257-19', '257-24', '257-27', '257-28', '257-29', '257-30', '257-31', '257-37', '257-39', '257-42', '257-45', '257-47', '257-52', '257-53', '257-55', '257-56', '257-60', '257-61', '258-29', '258-39', '258-40', '258-41', '258-44', '258-45', '266-1', '266-10', '266-12', '266-13', '266-14', '266-15', '266-16', '266-17', '266-18', '266-19', '266-2', '266-20', '266-21', '266-22', '266-23', '266-24', '266-25', '266-26', '266-3', '266-35', '266-36', '266-37', '266-38', '266-4', '266-5', '266-6', '266-7', '266-8', '266-9']  ",
+    "Category": "Spatial_Constraints",
+    "Subcategory": "Simple Buffer Queries"
+  },
+
+
+{
+    "Query": "find parcels that are within 400 meters of harvard university.  ",
+    "Code": "import geopandas as gpd
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+
+
+# Define Harvard University location (approximate)
+harvard_location = (-71.1189, 42.3770)
+
+
+# Create GeoDataFrame for Harvard location
+harvard_gdf = gpd.GeoDataFrame(
+    geometry=gpd.points_from_xy([harvard_location[0]], [harvard_location[1]]),
+    crs=parcels.crs
+)
+
+
+# Project to metric CRS
+parcels_proj = parcels.to_crs(epsg=26986)
+harvard_gdf_proj = harvard_gdf.to_crs(epsg=26986)
+
+
+# Create 800m buffer and filter
+harvard_buffer = harvard_gdf_proj.buffer(400)[0]
+near_harvard_parcels = parcels_proj[parcels_proj.geometry.intersects(harvard_buffer)].copy()
+
+
+# Sort and output
+near_harvard_parcels = near_harvard_parcels.sort_values('ml')
+result_ids = near_harvard_parcels['ml'].tolist()
+print(result_ids)
+   ",
+    "Answer": " ['137-1', '143-17', '144-1', '157-1', '157-19', '157-20', '157-23', '157-26', '157-3', '157-39', '157-4', '157-49', '157-5', '157-50', '157-51', '157-52', '157-53', '157-54', '157-6', '157-61', '157-62', '157-63', '157-64', '157-68', '157-69', '157-7', '157-8', '158-25', '158-28', '159-1', '159-2', '167-11', '167-96', '168-45', '168-57', '168-59', '168-64', '169-100', '169-102', '169-12', '169-14', '169-15', '169-17', '169-18', '169-19', '169-3', '169-4', '169-42', '169-46', '169-47', '169-5', '169-50', '169-67', '169-68', '169-69', '169-7', '169-79', '169-8', '169-81', '169-82', '169-84', '169-85', '169-86', '169-88', '169-91', '169-93', '169-94', '169-95', '169-96', '169-98', '169-99', '170-19', '170-27', '170-28', '170-33', '170-34', '170-35', '170-36', '170-38', '170-39', '170-4', '170-5', '171-1', '172-102', '172-103', '172-104', '172-105', '172-106', '172-107', '172-108', '172-109', '172-12', '172-14', '172-15', '172-16', '172-18', '172-19', '172-2', '172-21', '172-24', '172-25', '172-26', '172-28', '172-29', '172-3', '172-30', '172-36', '172-37', '172-38', '172-41', '172-49', '172-50', '172-51', '172-57', '172-59', '172-61', '172-62', '172-63', '172-65', '172-67', '172-68', '172-69', '172-70', '172-71', '172-73', '172-74', '172-98', '172-99', '173-101', '173-51', '173-71', '173-78', '173-90', '173-91', '173-92', '216-18', '216-24', '216-35', '216-36', '217-18']  ",
+    "Category": "Spatial_Constraints",
+    "Subcategory": "Simple Buffer Queries"
+  },
+
+
+{
+    "Query": "find parcels that are within 200 meters of cambridge city hall.  ",
+    "Code": " import geopandas as gpd
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+
+
+# City Hall approximate location
+city_hall_location = (-71.0822, 42.3736)
+
+
+# Create GeoDataFrame
+city_hall_gdf = gpd.GeoDataFrame(
+    geometry=gpd.points_from_xy([city_hall_location[0]], [city_hall_location[1]]),
+    crs=parcels.crs
+)
+
+
+# Project to metric CRS
+parcels_proj = parcels.to_crs(epsg=26986)
+city_hall_proj = city_hall_gdf.to_crs(epsg=26986)
+
+
+# Create buffer and filter
+city_hall_buffer = city_hall_proj.buffer(200).iloc[0]
+near_parcels = parcels_proj[parcels_proj.geometry.intersects(city_hall_buffer)].copy()
+
+
+# Sort and convert back
+near_parcels = near_parcels.sort_values(by='ml').to_crs(parcels.crs)
+result_ids = near_parcels['ml'].tolist()
+print(result_ids)
+  ",
+    "Answer": " ['1A-178', '1A-179', '1A-207', '21-104', '21-107', '21-108', '21-109', '21-114', '21-115', '21-118', '21-122', '21-123', '21-124', '21-125', '21-20', '21-21', '21-24', '21-27', '21-30', '21-49', '21-50', '21-51', '21-52', '21-53', '21-54', '21-55', '21-56', '21-77', '22-109', '22-114', '22-115', '22-117', '22-118', '22-122', '22-123', '22-124', '22-128', '22-130', '22-132', '22-133', '22-134', '22-135', '22-138', '22-139', '22-140', '22-141', '22-142', '22-20', '22-22', '22-23', '22-24', '22-25', '22-26', '22-27', '22-28', '22-30', '22-31', '22-32', '22-33', '22-34', '22-35', '22-43', '22-44', '22-45', '22-46', '22-50', '22-53', '22-54', '22-59', '22-60', '22-63', '22-66', '22-67', '22-68', '22-69', '22-70', '22-71', '22-78', '22-93', '22-94', '22-97', '23-10', '23-25', '23-26', '23-27', '23-28', '23-29', '23-30', '23-31', '23-32', '23-33', '23-34', '23-4', '23-52', '23-53', '23-6', '23-7', '23-9', '35-95', '7-113', '7-115', '7-29', '7-35', '7-37']  ",
+    "Category": "Spatial_Constraints",
+    "Subcategory": "Simple Buffer Queries"
+  },
+
+
+{
+    "Query": "find parcels that are within 100 meters of a major intersection.  ",
+    "Code": "  import geopandas as gpd
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+
+
+# Define intersection coordinates
+major_intersections = [
+    (-71.1189, 42.3736),
+    (-71.1031, 42.3656),
+    (-71.0865, 42.3625),
+    (-71.1226, 42.3782),
+    (-71.1429, 42.3954)
+]
+
+
+# Convert to GeoDataFrame
+intersection_geom = [gpd.points_from_xy([lon], [lat])[0] for lon, lat in major_intersections]
+intersection_gdf = gpd.GeoDataFrame(geometry=intersection_geom, crs=parcels.crs)
+
+
+# Project to CRS for buffer
+parcels_proj = parcels.to_crs(epsg=26986)
+intersection_proj = intersection_gdf.to_crs(epsg=26986)
+
+
+# Create 100m buffers
+intersection_buffers = [geom.buffer(100) for geom in intersection_proj.geometry]
+union_buffer = gpd.GeoSeries(intersection_buffers).unary_union
+
+
+# Find parcels within buffer
+parcels_near_intersections = parcels_proj[parcels_proj.geometry.intersects(union_buffer)]
+result_ids = sorted(parcels_near_intersections['ml'].tolist())
+print(result_ids)
+ ",
+    "Answer": " ['105-74', '106-103', '106-105', '106-123', '106-124', '107-135', '107-136', '107-137', '159-1', '159-2', '160-11', '160-14', '160-57', '160-58', '160-59', '160-69', '160-70', '169-100', '169-102', '169-42', '169-50', '169-79', '169-93', '169-98', '169-99', '170-39', '171-1', '172-108', '172-109', '172-18', '172-19', '172-21', '172-24', '172-25', '172-26', '172-29', '172-30', '172-37', '172-38', '172-49', '172-50', '172-59', '172-60', '172-61', '172-65', '172-67', '172-68', '172-69', '172-70', '216-18', '216-35', '216-36', '216-8', '265D-52', '265D-53', '267.4-322', '269.5-101', '44-101', '44-102', '44-104', '44-105', '44-106', '44-95', '44-99', '48-129', '48-156', '48-157', '48-158', '48-159', '48-20', '90-125', '90-133', '90-161', '90-162', '90-169', '90-170', '90-171', '90-184', '90-185', '90-193', '90-194', '90-52', '90-55', '90-70', '90-71']  ",
+    "Category": "Spatial_Constraints",
+    "Subcategory": "Simple Buffer Queries"
+  },
+
+
+
+
+{
+    "Query": "find parcels within 300 meters of harvard university AND outside 200 meters of major roads  ",
+    "Code": " import geopandas as gpd
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+
+
+# Define Harvard location
+harvard_coords = (-71.1189, 42.3770)
+parcels_proj = parcels.to_crs(epsg=26986)
+
+
+# Create Harvard GeoDataFrame and buffer
+harvard_point = gpd.GeoDataFrame(
+    geometry=[gpd.points_from_xy([harvard_coords[0]], [harvard_coords[1]])[0]],
+    crs=parcels.crs
+).to_crs(epsg=26986)
+
+
+harvard_buffer_300m = harvard_point.buffer(300)
+parcels_near_harvard = parcels_proj[parcels_proj.geometry.intersects(harvard_buffer_300m.iloc[0])]
+
+
+# Major road IDs
+major_road_ids = ['3230', '3231', '3234', '3235', '3240', '3241', '3243', '3246', '3250']  # (truncated for brevity)
+
+
+# Filter major roads and buffer
+major_roads = parcels_proj[parcels_proj['ml'].astype(str).isin(major_road_ids)]
+road_buffer_200m = major_roads.buffer(200)
+parcels_far_from_roads = parcels_near_harvard[~parcels_near_harvard.geometry.intersects(road_buffer_200m.unary_union)]
+
+
+# Convert and sort
+final_parcels = parcels_far_from_roads.to_crs(parcels.crs).sort_values('ml')
+result_ids = final_parcels['ml'].tolist()
+print(f"Found {len(final_parcels)} parcels meeting criteria")
+print(f"Parcel IDs: {result_ids}")
+  ",
+    "Answer": " ['143-17', '144-1', '157-69', '158-25', '158-28', '159-1', '169-12', '169-15', '169-17', '169-18', '169-19', '169-3', '169-4', '169-5', '169-67', '169-68', '169-69', '169-7', '169-79', '169-8', '169-88', '169-91', '169-94', '169-95', '169-96', '169-99', '170-19', '170-35', '170-4', '171-1', '172-102', '172-103', '172-104', '172-105', '172-106', '172-107', '172-108', '172-109', '172-12', '172-14', '172-15', '172-16', '172-18', '172-25', '172-26', '172-28', '172-29', '172-30', '172-36', '172-57', '172-65', '172-67', '172-68', '172-71', '172-73', '172-74', '172-99']  ",
+    "Category": "Spatial_Constraints",
+    "Subcategory": "Simple Buffer Queries"
+  },
+
+
+{
+    "Query": "find parcels within 400 meters of cambridge city hall AND at least 250 meters from any industrial area  ",
+    "Code": " import geopandas as gpd
+
+
+# Load data
+parcels = gpd.read_file('data/cambridge_parcels.geojson')
+poi = gpd.read_file('data/cambridge_poi_processed.geojson')
+census = gpd.read_file('data/cambridge_census_cambridge_pct.geojson')
+
+
+# Project to metric CRS
+cambridge_crs = 26986
+parcels_proj = parcels.to_crs(cambridge_crs)
+poi_proj = poi.to_crs(cambridge_crs)
+census_proj = census.to_crs(cambridge_crs)
+
+
+# City Hall location
+city_hall_location = (-71.0825, 42.3736)
+city_hall_geom = gpd.GeoSeries(gpd.points_from_xy([city_hall_location[0]], [city_hall_location[1]]), crs=parcels.crs)
+city_hall_geom_proj = city_hall_geom.to_crs(cambridge_crs)
+
+
+# Industrial parcels
+industrial_use_codes = [
+    '300', '302', '316', '323', '324', '325', '326', '327', '330', '332',
+    '334', '340', '341', '343', '345', '346', '353', '362', '375'
+]
+industrial_parcels = parcels_proj[parcels_proj['use_code'].astype(str).isin(industrial_use_codes)].copy()
+
+
+# Condition 1: Near City Hall
+city_hall_buffer = city_hall_geom_proj.buffer(1000).iloc[0]
+near_city_hall_parcels = parcels_proj[parcels_proj.geometry.intersects(city_hall_buffer)].copy()
+
+
+# Condition 2: Far from industrial
+industrial_buffers = [geom.buffer(150) for geom in industrial_parcels.geometry]
+combined_industrial_buffer = gpd.GeoSeries(industrial_buffers).unary_union
+far_from_industrial_parcels = near_city_hall_parcels[~near_city_hall_parcels.geometry.intersects(combined_industrial_buffer)].copy()
+
+
+# Final output
+final_parcels = far_from_industrial_parcels.to_crs(parcels.crs).sort_values('ml')
+result_ids = final_parcels['ml'].tolist()
+print(f"Found {len(final_parcels)} parcels meeting criteria")
+print(f"Parcel IDs: {result_ids}")
+  ",
+    "Answer": " ['25-100', '25-102', '25-106', '25-123', '25-127', '25-128', '25-131', '25-134', '25-135', '25-136', '25-137', '25-143', '25-144', '25-145', '25-146', '25-151', '25-152', '25-83', '25-86', '25-87', '25-88', '25-89', '25-90', '25-92', '25-94', '25-95', '25-97', '25-98', '25-99', '26-10', '26-100', '26-101', '26-102', '26-103', '26-109', '26-11', '26-110', '26-111', '26-112', '26-115', '26-117', '26-118', '26-12', '26-124', '26-126', '26-127', '26-128', '26-129', '26-130', '26-133', '26-136', '26-137', '26-138', '26-139', '26-14', '26-140', '26-141', '26-142', '26-143', '26-145', '26-147', '26-15', '26-152', '26-155', '26-156', '26-159', '26-16', '26-160', '26-161', '26-162', '26-163', '26-164', '26-165', '26-170', '26-171', '26-173', '26-174', '26-179', '26-180', '26-19', '26-2', '26-22', '26-23', '26-24', '26-27', '26-28', '26-29', '26-3', '26-34', '26-35', '26-36', '26-37', '26-38', '26-4', '26-41', '26-42', '26-44', '26-47', '26-48', '26-49', '26-5', '26-50', '26-64', '26-66', '26-69', '26-7', '26-70', '26-72', '26-73', '26-74', '26-75', '26-8', '26-9', '26-97', '26-98', '26-99', '32-10', '32-11', '32-40', '32-41', '32-42', '32-43', '32-44', '32-45', '32-90', '32-91', '33-100', '33-101', '33-20', '33-21', '33-36', '33-45', '33-46', '33-47', '33-49', '33-52', '33-75', '33-82', '33-83', '37-1', '37-2', '37-3', '37-43', '39-181', '39-21', '39-22', '78-103', '78-104', '78-133', '78-149', '78-150', '78-246', '78-247', '78-248', '78-249', '78-43', '78-64', '78-68', '78-69', '78-70', '78-71', '78-78', '78-79', '78-82', '78-86', '78-87', '78-88', '78-90', '79-73']  ",
+    "Category": "Spatial_Constraints",
+    "Subcategory": "Simple Buffer Queries"
+  },

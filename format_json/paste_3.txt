@@ -1,0 +1,185 @@
+[
+{
+    'Query': "find commercial parcels larger than 10000 sq ft, within 300 meters of a subway station, and in areas with at least 40% of residents having advanced degrees",
+    'Code': """\
+import geopandas as gpd
+
+parcels = gpd.read_file('cambridge_parcels.geojson').to_crs(epsg=26986)
+poi = gpd.read_file('cambridge_poi_processed.geojson').to_crs(epsg=26986)
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson').to_crs(epsg=26986)
+
+# Filter commercial parcels (General Use Category 'Commercial') larger than 10000 sq ft
+parcels_com = parcels[(parcels['GENERAL_USE_CATEGORY'] == 'Commercial') & (parcels['LAND_AREA'] > 10000)]
+
+# Select subway station POIs and buffer 300m
+station_points = poi[poi['category'] == 'Subway Station']
+station_area = station_points.geometry.buffer(300).unary_union
+
+# Keep only parcels within 300m of any subway station
+parcels_com_near_station = parcels_com[parcels_com.geometry.intersects(station_area)]
+
+# Spatially join parcels to census tracts and filter for advanced degree >= 40%
+parcels_pts = parcels_com_near_station.copy()
+parcels_pts.geometry = parcels_pts.centroid  # use parcel centroids for tract join
+parcels_joined = gpd.sjoin(parcels_pts, census, how='inner', op='within')
+parcels_high_ed = parcels_joined[parcels_joined['pct_adv_deg'] >= 40]
+
+# Get unique matching parcel IDs sorted
+result_ids = sorted(parcels_high_ed['ML'].unique().tolist())
+result_ids""",
+    'Answer': []
+},
+
+{
+    'Query': "locate office parcels (use_code indicating office) larger than 8000 sq ft within 200m of an educational institution, and in areas where at least 85% of residents are aged 18-64",
+    'Code': """\
+import geopandas as gpd
+
+# Load and project data
+parcels = gpd.read_file('cambridge_parcels.geojson').to_crs(epsg=26986)
+poi = gpd.read_file('cambridge_poi_processed.geojson').to_crs(epsg=26986)
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson').to_crs(epsg=26986)
+
+# Filter office parcels (USE_CATEGORY 'Office', e.g. codes 340, 343, 345, 346) larger than 8000 sq ft
+parcels_office = parcels[(parcels['USE_CATEGORY'] == 'Office') & (parcels['LAND_AREA'] > 8000)]
+
+# Select educational institution POIs and buffer 200m
+edu_points = poi[poi['category'] == 'Educational Institution']
+edu_area = edu_points.geometry.buffer(200).unary_union
+
+# Keep only office parcels within 200m of an educational institution
+parcels_office_near_edu = parcels_office[parcels_office.geometry.intersects(edu_area)]
+
+# Join parcel centroids to census tracts and filter for working-age population >= 85%
+parcels_pts = parcels_office_near_edu.copy()
+parcels_pts.geometry = parcels_pts.centroid
+parcels_joined = gpd.sjoin(parcels_pts, census, how='inner', op='within')
+parcels_work_age = parcels_joined[parcels_joined['pct_age_18_64'] >= 85]
+
+# Output sorted list of parcel IDs
+result_ids = sorted(parcels_work_age['ML'].unique().tolist())
+result_ids""",
+    'Answer': []
+},
+
+{
+    'Query': "identify commercial parcels (any use_code indicating commercial use) within 500m of harvard square, larger than 7500 sq ft, and in census tracts with high educational attainment (pct_adv_deg above 50%)",
+    'Code': """\
+import geopandas as gpd
+
+# Load and project data
+parcels = gpd.read_file('cambridge_parcels.geojson').to_crs(epsg=26986)
+poi = gpd.read_file('cambridge_poi_processed.geojson').to_crs(epsg=26986)
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson').to_crs(epsg=26986)
+
+# Filter commercial parcels (General Use Category 'Commercial') larger than 7500 sq ft
+parcels_com = parcels[(parcels['GENERAL_USE_CATEGORY'] == 'Commercial') & (parcels['LAND_AREA'] > 7500)]
+
+# Find the Harvard Square location in POI and buffer 500m
+harvard_sq_pt = poi[poi['name'].str.contains('Harvard Square', case=False)].geometry.iloc[0]
+harvard_buffer = harvard_sq_pt.buffer(500)
+
+# Keep only parcels within 500m of Harvard Square
+parcels_com_near_harvard = parcels_com[parcels_com.geometry.intersects(harvard_buffer)]
+
+# Join parcel centroids to census tracts and filter for pct_adv_deg > 50%
+parcels_pts = parcels_com_near_harvard.copy()
+parcels_pts.geometry = parcels_pts.centroid
+parcels_joined = gpd.sjoin(parcels_pts, census, how='inner', op='within')
+parcels_high_ed = parcels_joined[parcels_joined['pct_adv_deg'] > 50]
+
+# Sorted parcel ID list as result
+result_ids = sorted(parcels_high_ed['ML'].unique().tolist())
+result_ids""",
+    'Answer': []
+},
+
+{
+    'Query': "find retail parcels (any use_code indicating retail use) larger than 7500 sq ft, in areas where annual retail spending per household exceeds $30,000",
+    'Code': """\
+import geopandas as gpd
+import pandas as pd
+
+# Load and project parcels and census data
+parcels = gpd.read_file('cambridge_parcels.geojson').to_crs(epsg=26986)
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson').to_crs(epsg=26986)
+# Load spending data and join to census (assume spend has 'retail_spend' column for annual retail spending per household)
+spend = pd.read_csv('cambridge_spend_processed.csv')
+census = census.merge(spend, on='GEOID10', how='left')
+
+# Filter retail parcels (use codes 323, 324, 325, 327 for retail stores, malls, supermarkets) larger than 7500 sq ft
+retail_codes = ['323', '324', '325', '327']
+parcels_retail = parcels[parcels['USE_CODE'].isin(retail_codes) & (parcels['LAND_AREA'] > 7500)]
+
+# Join parcel centroids to census polygons and filter for retail spending > $30,000
+parcels_pts = parcels_retail.copy()
+parcels_pts.geometry = parcels_pts.centroid
+parcels_joined = gpd.sjoin(parcels_pts, census, how='inner', op='within')
+high_spend_parcels = parcels_joined[parcels_joined['retail_spend'] > 30000]
+
+# Return sorted list of parcel IDs
+result_ids = sorted(high_spend_parcels['ML'].unique().tolist())
+result_ids""",
+    'Answer': []
+},
+
+
+{
+    'Query': "find restaurant parcels (use_code indicating restaurant/eating establishment) larger than 5000 sq ft, in census tracts where annual restaurant spending per household exceeds $6,000",
+    'Code': """\
+import geopandas as gpd
+import pandas as pd
+
+# Load and project data
+parcels = gpd.read_file('cambridge_parcels.geojson').to_crs(epsg=26986)
+census = gpd.read_file('cambridge_census_cambridge_pct.geojson').to_crs(epsg=26986)
+# Load spending data and merge with census (assume 'restaurant_spend' column for dining spending)
+spend = pd.read_csv('cambridge_spend_processed.csv')
+census = census.merge(spend, on='GEOID10', how='left')
+
+# Filter restaurant parcels (use code 326 for eating establishments) larger than 5000 sq ft
+parcels_rest = parcels[(parcels['USE_CODE'] == '326') & (parcels['LAND_AREA'] > 5000)]
+
+# Join parcel centroids to census tracts and filter for restaurant spending > $6,000
+parcels_pts = parcels_rest.copy()
+parcels_pts.geometry = parcels_pts.centroid
+parcels_joined = gpd.sjoin(parcels_pts, census, how='inner', op='within')
+high_spend_parcels = parcels_joined[parcels_joined['restaurant_spend'] > 6000]
+
+# Sorted parcel IDs of results
+result_ids = sorted(high_spend_parcels['ML'].unique().tolist())
+result_ids""",
+    'Answer': []
+}
+,
+{
+    'Query': "identify mixed-use parcels (use_code indicating mixed use) where parcels over 8000 sq ft are within 300m of a transit station, and parcels 8000 sq ft or smaller are within 100m of a residential parcel",
+    'Code': """\
+import geopandas as gpd
+
+# Load and project parcel and POI data
+parcels = gpd.read_file('cambridge_parcels.geojson').to_crs(epsg=26986)
+poi = gpd.read_file('cambridge_poi_processed.geojson').to_crs(epsg=26986)
+
+# Filter mixed-use parcels (General Use Category 'Mixed Use')
+parcels_mix = parcels[parcels['GENERAL_USE_CATEGORY'] == 'Mixed Use']
+
+# Prepare transit station buffer (300m) and residential parcel buffer (100m)
+transit_points = poi[poi['category'].isin(['Subway Station', 'Transit Station'])]
+transit_area = transit_points.geometry.buffer(300).unary_union
+residential_parcels = parcels[parcels['GENERAL_USE_CATEGORY'] == 'Residential']
+housing_area = residential_parcels.geometry.buffer(100).unary_union
+
+# Apply conditional spatial filters:
+# Large mixed-use parcels (>8000 sq ft) must be near transit; small parcels (<=8000) must be near housing
+large_mix = parcels_mix[(parcels_mix['LAND_AREA'] > 8000) & (parcels_mix.geometry.intersects(transit_area))]
+small_mix = parcels_mix[(parcels_mix['LAND_AREA'] <= 8000) & (parcels_mix.geometry.intersects(housing_area))]
+
+# Combine results and get unique parcel IDs
+selected_parcels = pd.concat([large_mix, small_mix]).drop_duplicates(subset='ML')
+result_ids = sorted(selected_parcels['ML'].tolist())
+result_ids""",
+    'Answer': []
+}
+]
+

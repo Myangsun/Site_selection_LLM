@@ -35,9 +35,16 @@ class SpatialFineTuningHandler:
         # Load test samples if available
         self.samples = self.load_samples()
 
+        # Create enhanced system prompt
+        self.enhanced_system_prompt = self.create_cost_optimized_system_prompt()
+
         logger.info(
             f"Fine-tuning handler initialized with data dir: {data_dir}")
         logger.info(f"Loaded {len(self.samples)} samples for fine-tuning")
+
+    def create_cost_optimized_system_prompt(self) -> str:
+        """Create a concise system prompt to reduce fine-tuning costs."""
+        return """You are a geospatial data expert. Transform queries into Python code."""
 
     def load_samples(self) -> List[Dict]:
         """
@@ -47,7 +54,8 @@ class SpatialFineTuningHandler:
             List of dictionaries with Query, Code, Answer keys
         """
         try:
-            sample_path = os.path.join(self.data_dir, 'spatial_samples.json')
+            sample_path = os.path.join(
+                self.data_dir, 'formatted_samples_combined.json')
             if os.path.exists(sample_path):
                 with open(sample_path, 'r', encoding='utf-8-sig') as f:
                     samples = json.load(f)
@@ -60,6 +68,220 @@ class SpatialFineTuningHandler:
         except Exception as e:
             logger.error(f"Error loading samples: {e}")
             return []
+
+    def prepare_chain_of_thought_format(self,
+                                        output_dir: str,
+                                        validation_split: float = 0.2) -> Dict[str, str]:
+        """
+        Prepare data for fine-tuning with chain-of-thought reasoning.
+
+        Args:
+            output_dir: Directory to save prepared data
+            validation_split: Fraction of data to use for validation
+
+        Returns:
+            Dictionary with paths to training and validation files
+        """
+        if not self.samples:
+            logger.error("No samples available for preparing fine-tuning data")
+            return {}
+
+        # Create output directory
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Create a copy of samples and shuffle
+        all_samples = self.samples.copy()
+        random.shuffle(all_samples)
+
+        # Split into training and validation sets
+        if validation_split > 0:
+            split_index = int(len(all_samples) * (1 - validation_split))
+            training_samples = all_samples[:split_index]
+            validation_samples = all_samples[split_index:]
+
+            logger.info(f"Split dataset: {len(training_samples)} training samples, "
+                        f"{len(validation_samples)} validation samples")
+        else:
+            training_samples = all_samples
+            validation_samples = []
+
+        # Prepare training data with chain-of-thought reasoning
+        training_data = []
+        for sample in tqdm(training_samples, desc="Preparing training data"):
+            # Get query components for reasoning
+            query_components = self._extract_query_components(sample["Query"])
+
+            # Create chain-of-thought conversation
+            entry = {
+                "messages": [
+                    {"role": "system", "content": self.enhanced_system_prompt},
+                    {"role": "user", "content": f"Find {sample['Query']}"},
+                    {"role": "assistant", "content": self._generate_reasoning_steps(
+                        query_components)},
+                    {"role": "user", "content": "Generate the Python code for this query."},
+                    {"role": "assistant",
+                        "content": f"Here's the Python code to find parcels matching your criteria:\n\n{sample['Code']}"},
+                    {"role": "user", "content": "What parcels match these criteria?"},
+                    {"role": "assistant",
+                        "content": f"Based on the analysis, these parcels match all criteria: {sample['Answer']}"}
+                ]
+            }
+            training_data.append(entry)
+
+        # Save training data
+        training_file = os.path.join(
+            output_dir, "training_data_chain_of_thought.jsonl")
+        with open(training_file, 'w') as f:
+            for item in training_data:
+                f.write(json.dumps(item) + '\n')
+
+        logger.info(f"Chain-of-thought training data saved to {training_file}")
+
+        # Prepare validation data if we have a split
+        validation_file = None
+        if validation_samples:
+            validation_data = []
+            for sample in tqdm(validation_samples, desc="Preparing validation data"):
+                # Get query components for reasoning
+                query_components = self._extract_query_components(
+                    sample["Query"])
+
+                # Create chain-of-thought conversation
+                entry = {
+                    "messages": [
+                        {"role": "system", "content": self.enhanced_system_prompt},
+                        {"role": "user", "content": f"Find {sample['Query']}"},
+                        {"role": "assistant", "content": self._generate_reasoning_steps(
+                            query_components)},
+                        {"role": "user",
+                            "content": "Generate the Python code for this query."},
+                        {"role": "assistant",
+                            "content": f"Here's the Python code to find parcels matching your criteria:\n\n{sample['Code']}"},
+                        {"role": "user", "content": "What parcels match these criteria?"},
+                        {"role": "assistant",
+                            "content": f"Based on the analysis, these parcels match all criteria: {sample['Answer']}"}
+                    ]
+                }
+                validation_data.append(entry)
+
+            validation_file = os.path.join(
+                output_dir, "validation_data_chain_of_thought.jsonl")
+            with open(validation_file, 'w') as f:
+                for item in validation_data:
+                    f.write(json.dumps(item) + '\n')
+
+            logger.info(
+                f"Chain-of-thought validation data saved to {validation_file}")
+
+        return {
+            "training_file": training_file,
+            "validation_file": validation_file
+        }
+
+    def _extract_query_components(self, query: str) -> Dict[str, Any]:
+        """
+        Extract key components from a query for generating reasoning steps.
+
+        Args:
+            query: The query text
+
+        Returns:
+            Dictionary of query components
+        """
+        components = {
+            "parcel_type": None,
+            "size_filter": None,
+            "location_filter": None,
+            "demographic_filter": None,
+            "business_filter": None,
+            "sorting": None,
+            "complex_logic": False
+        }
+
+        # Extract parcel type
+        if "commercial" in query.lower():
+            components["parcel_type"] = "commercial"
+        elif "retail" in query.lower():
+            components["parcel_type"] = "retail"
+        elif "office" in query.lower():
+            components["parcel_type"] = "office"
+        elif "mixed-use" in query.lower() or "mixed use" in query.lower():
+            components["parcel_type"] = "mixed-use"
+        elif "residential" in query.lower():
+            components["parcel_type"] = "residential"
+
+        # Extract size filter
+        if "larger than" in query.lower() or "greater than" in query.lower() or ">" in query:
+            components["size_filter"] = "minimum"
+        elif "smaller than" in query.lower() or "less than" in query.lower() or "<" in query:
+            components["size_filter"] = "maximum"
+        elif "between" in query.lower():
+            components["size_filter"] = "range"
+
+        # Extract location filter
+        if "within" in query.lower() or "near" in query.lower() or "close to" in query.lower():
+            components["location_filter"] = True
+
+        # Extract demographic filter
+        if "census" in query.lower() or "income" in query.lower() or "aged" in query.lower() or "residents" in query.lower():
+            components["demographic_filter"] = True
+
+        # Extract business filter
+        if "business" in query.lower() or "restaurant" in query.lower() or "competitor" in query.lower() or "retail" in query.lower():
+            components["business_filter"] = True
+
+        # Check for complex logic
+        if "if" in query.lower() or "either" in query.lower() or "or" in query.lower() or "and" in query.lower():
+            components["complex_logic"] = True
+
+        # Check for sorting or top N
+        if "top" in query.lower() or "prioritizing" in query.lower() or "highest" in query.lower():
+            components["sorting"] = True
+
+        return components
+
+    def _generate_reasoning_steps(self, components: Dict[str, Any]) -> str:
+        """
+        Generate shorter reasoning steps to reduce token usage.
+        """
+        steps = [
+            "I'll solve this by:",
+            f"1. Loading data: parcels{', census' if components['demographic_filter'] else ''}{', poi' if components['location_filter'] or components['business_filter'] else ''}"
+        ]
+
+        step_num = 2
+        if components["parcel_type"]:
+            steps.append(
+                f"{step_num}. Filtering {components['parcel_type']} parcels")
+            step_num += 1
+
+        if components["size_filter"]:
+            steps.append(f"{step_num}. Applying size filter")
+            step_num += 1
+
+        if components["demographic_filter"]:
+            steps.append(f"{step_num}. Applying demographic filter")
+            step_num += 1
+
+        if components["location_filter"]:
+            steps.append(f"{step_num}. Applying spatial constraints")
+            step_num += 1
+
+        if components["business_filter"]:
+            steps.append(f"{step_num}. Analyzing business distribution")
+            step_num += 1
+
+        if components["complex_logic"]:
+            steps.append(f"{step_num}. Handling conditional logic")
+            step_num += 1
+
+        if components["sorting"]:
+            steps.append(f"{step_num}. Sorting by priority criteria")
+            step_num += 1
+
+        steps.append(f"{step_num}. Returning filtered parcel IDs")
+
+        return "\n".join(steps)
 
     def prepare_standard_format(self,
                                 output_dir: str,
@@ -103,7 +325,7 @@ class SpatialFineTuningHandler:
             # Create simple prompt-completion format
             entry = {
                 "messages": [
-                    {"role": "system", "content": "You are an expert in geospatial data analysis using Python."},
+                    {"role": "system", "content": self.enhanced_system_prompt},
                     {"role": "user",
                         "content": f"Generate Python code to answer this query: {sample['Query']}"},
                     {"role": "assistant", "content": sample['Code']}
@@ -126,7 +348,7 @@ class SpatialFineTuningHandler:
             for sample in validation_samples:
                 entry = {
                     "messages": [
-                        {"role": "system", "content": "You are an expert in geospatial data analysis using Python."},
+                        {"role": "system", "content": self.enhanced_system_prompt},
                         {"role": "user",
                             "content": f"Generate Python code to answer this query: {sample['Query']}"},
                         {"role": "assistant", "content": sample['Code']}
@@ -184,9 +406,9 @@ class SpatialFineTuningHandler:
             training_samples = all_samples
             validation_samples = []
 
-        # Default system prompt if not provided
+        # Use enhanced system prompt if none provided
         if system_prompt is None:
-            system_prompt = "You are a commercial site selection assistant that generates Python code to analyze geospatial data."
+            system_prompt = self.enhanced_system_prompt
 
         # Prepare training data
         training_data = []
@@ -294,7 +516,7 @@ class SpatialFineTuningHandler:
             # Create function calling format
             entry = {
                 "messages": [
-                    {"role": "system", "content": "You are a commercial site selection assistant that generates Python code to analyze geospatial data."},
+                    {"role": "system", "content": self.enhanced_system_prompt},
                     {"role": "user", "content": f"Find {sample['Query']}"},
                     {"role": "assistant", "function_call": {
                         "name": "generate_spatial_analysis_code",
@@ -325,7 +547,7 @@ class SpatialFineTuningHandler:
             for sample in validation_samples:
                 entry = {
                     "messages": [
-                        {"role": "system", "content": "You are a commercial site selection assistant that generates Python code to analyze geospatial data."},
+                        {"role": "system", "content": self.enhanced_system_prompt},
                         {"role": "user", "content": f"Find {sample['Query']}"},
                         {"role": "assistant", "function_call": {
                             "name": "generate_spatial_analysis_code",
@@ -384,10 +606,10 @@ class SpatialFineTuningHandler:
     def start_fine_tuning(self,
                           training_file_id: str,
                           validation_file_id: Optional[str] = None,
-                          model: str = "gpt-4o-2024-08-06",
+                          model: str = "gpt-4o-mini-2024-07-18",
                           suffix: str = "spatial-agent",
-                          n_epochs: Optional[int] = 3,
-                          batch_size: Optional[int] = 16,
+                          n_epochs: Optional[int] = 20,
+                          batch_size: Optional[int] = 8,
                           learning_rate_multiplier: Optional[float] = 0.08) -> str:
         """
         Start a fine-tuning job with OpenAI.
@@ -509,7 +731,7 @@ class SpatialFineTuningHandler:
     def run_fine_tuning_pipeline(self,
                                  output_dir: str,
                                  format_type: str = "standard",
-                                 model: str = "gpt-4o-2024-08-06",
+                                 model: str = "gpt-4o-mini-2024-07-18",
                                  suffix: Optional[str] = None,
                                  validation_split: float = 0.2,
                                  wait_for_completion: bool = True) -> Dict[str, Any]:
@@ -518,7 +740,7 @@ class SpatialFineTuningHandler:
 
         Args:
             output_dir: Directory to save intermediate files
-            format_type: Format type for fine-tuning data ("standard", "multi_turn", or "function_calling")
+            format_type: Format type for fine-tuning data ("standard", "multi_turn", "chain_of_thought", or "function_calling")
             model: Base model to fine-tune
             suffix: Suffix to add to the model name
             validation_split: Fraction of data to use for validation
@@ -541,7 +763,12 @@ class SpatialFineTuningHandler:
             logger.info(
                 f"Preparing fine-tuning data in {format_type} format...")
 
-            if format_type == "multi_turn":
+            if format_type == "chain_of_thought":
+                data_files = self.prepare_chain_of_thought_format(
+                    output_dir=output_dir,
+                    validation_split=validation_split
+                )
+            elif format_type == "multi_turn":
                 data_files = self.prepare_multi_turn_format(
                     output_dir=output_dir,
                     validation_split=validation_split

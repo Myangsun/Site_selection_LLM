@@ -1,12 +1,22 @@
 {
+  "fine_tuned": {
+    "total_queries": 20,
+    "successful_queries": 10,
+    "success_rate": 0.5,
+    "avg_precision": 0.2639344966107729,
+    "avg_recall": 0.5677067617810103,
+    "avg_f1_score": 0.30099429502116626,
+    "avg_exact_match": 0.0,
+    "avg_result_match_rate": 0.2639344966107729
+  },
   "fine_tuned_rag": {
     "total_queries": 20,
-    "successful_queries": 3,
-    "success_rate": 0.15,
-    "avg_precision": 0.6810035842293907,
-    "avg_recall": 1.0,
-    "avg_f1_score": 0.6941580756013747,
-    "avg_exact_match": 0.6666666666666666,
-    "avg_result_match_rate": 0.6810035842293907
+    "successful_queries": 6,
+    "success_rate": 0.3,
+    "avg_precision": 0.33546232799964143,
+    "avg_recall": 0.485663082437276,
+    "avg_f1_score": 0.3363187622602899,
+    "avg_exact_match": 0.0,
+    "avg_result_match_rate": 0.33546232799964143
   }
 }

@@ -150,7 +150,7 @@ def run_method_evaluation(args):
             # Run fine-tuning pipeline
             fine_tuning_result = fine_tuner.run_fine_tuning_pipeline(
                 output_dir=os.path.join(args.output_dir, "finetune_data"),
-                model="gpt-4o-2024-08-06",
+                model="gpt-4o-mini-2024-07-18",
                 validation_split=0.2,
                 wait_for_completion=True
             )

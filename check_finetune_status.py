@@ -4,6 +4,8 @@ import logging
 import argparse
 import openai
 import time
+import re
+import matplotlib.pyplot as plt
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -92,13 +94,114 @@ def wait_for_completion(job_id, results_dir, check_interval=300, max_wait_time=N
         time.sleep(wait_time)
 
 
+# Updated helper function to plot fine-tune loss using the new API
+def plot_finetune_loss(job_id):
+    """
+    Fetch fine-tune events for job_id, extract training loss, and display a plot.
+    """
+    try:
+        # Initialize OpenAI client
+        client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+        # Retrieve all events
+        events = []
+        try:
+            # Set a higher limit to get more events (default might be too low)
+            for event in client.fine_tuning.jobs.list_events(
+                fine_tuning_job_id=job_id,
+                limit=100  # Increase this if needed
+            ):
+                events.append(event)
+
+            logger.info(f"Retrieved {len(events)} events for job {job_id}")
+
+            # If no events were found, try retrieving the job to check its status
+            if len(events) == 0:
+                job = client.fine_tuning.jobs.retrieve(job_id)
+                logger.info(f"Job status: {job.status}")
+
+                # If the job is not complete, we might not have loss data yet
+                if job.status not in ["succeeded", "failed", "cancelled"]:
+                    logger.warning(
+                        f"Job {job_id} is still in progress (status: {job.status}). Loss data may not be available yet.")
+
+        except Exception as e:
+            logger.error(f"Error retrieving events: {e}")
+            return
+
+        # Parse out step and loss
+        steps = []
+        losses = []
+        val_steps = []
+        val_losses = []
+
+        for ev in events:
+            msg = ev.message
+
+            # Check for training loss - match the exact format from the logs
+            # Format: "Step X/Y: training loss=Z, validation loss=W, full validation loss=V"
+            m_train = re.search(
+                r"Step\s+(\d+)/\d+:.*?training loss=\s*([0-9.]+)", msg)
+            if m_train:
+                step_num = int(m_train.group(1))
+                train_loss = float(m_train.group(2))
+                logger.info(
+                    f"Found training loss: Step {step_num}, Loss {train_loss}")
+                steps.append(step_num)
+                losses.append(train_loss)
+
+            # Also check for validation loss if available
+            m_val = re.search(
+                r"Step\s+(\d+)/\d+:.*?validation loss=\s*([0-9.]+)", msg)
+            if m_val:
+                step_num = int(m_val.group(1))
+                val_loss = float(m_val.group(2))
+                logger.info(
+                    f"Found validation loss: Step {step_num}, Loss {val_loss}")
+                val_steps.append(step_num)
+                val_losses.append(val_loss)
+
+        # Plot
+        if steps and losses:
+            plt.figure(figsize=(10, 6))
+            plt.plot(steps, losses, 'b-', label='Training Loss')
+
+            # Add validation loss if available
+            if val_steps and val_losses:
+                plt.plot(val_steps, val_losses, 'r-', label='Validation Loss')
+                plt.legend()
+
+            plt.xlabel("Step")
+            plt.ylabel("Loss")
+            plt.title(f"Fine-tune Loss Curve for {job_id}")
+            plt.grid(True, linestyle='--', alpha=0.7)
+
+            output_file = os.path.join(os.path.dirname(
+                os.path.abspath(__file__)), f"finetune_loss_{job_id}.png")
+            plt.savefig(output_file)
+            plt.show()
+            logger.info(f"Loss plot saved to {output_file}")
+        else:
+            logger.warning("No training loss events found to plot.")
+
+            # Debug info about the events
+            if events:
+                logger.info(
+                    "Found events, but no loss data was extracted. Event messages:")
+                for i, ev in enumerate(events[:5]):  # Show first 5 events
+                    logger.info(f"Event {i}: {ev.message}")
+
+    except Exception as e:
+        logger.error(f"Error plotting fine-tune loss: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Check fine-tuning job status")
 
     parser.add_argument("--job_id", type=str, required=True,
                         help="Fine-tuning job ID to check")
-    parser.add_argument("--results_dir", type=str, default="../results",
+    parser.add_argument("--results_dir", type=str, default="results",
                         help="Directory to store results")
     parser.add_argument("--wait", action="store_true",
                         help="Wait for job completion")
@@ -108,6 +211,9 @@ def main():
                         help="Maximum seconds to wait (default: unlimited)")
 
     args = parser.parse_args()
+
+    # Create results directory if it doesn't exist
+    os.makedirs(args.results_dir, exist_ok=True)
 
     if args.wait:
         status = wait_for_completion(
@@ -129,6 +235,11 @@ def main():
         print(f"To use the model, run:")
         print(f"export FINE_TUNED_MODEL_NAME=\"{status['fine_tuned_model']}\"")
         print(f"python evaluate_methods.py --methods fine-tuned --skip-finetune")
+        # Plot the fine-tune loss curve
+        try:
+            plot_finetune_loss(args.job_id)
+        except Exception as e:
+            logger.error(f"Error plotting fine-tune loss: {e}")
 
 
 if __name__ == "__main__":
