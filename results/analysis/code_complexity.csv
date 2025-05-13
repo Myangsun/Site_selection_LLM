@@ -1,17 +1,10 @@
 method,query,lines_of_code,characters,functions,f1_score
-fine_tuned,Find commercial parcels within 500 meters of Harvard Square.,36,1371,0,0.9550561797752808
-fine_tuned,Find parcels larger than 6000 square feet that are zoned for retail use.,24,5331,0,0.150197628458498
-fine_tuned,Find all parcels that have no more than 2 competing restaurants within 800 meters.,35,1420,1,0.9913043478260869
-fine_tuned,Find the top 20 parcels in Cambridge with the most diverse mix of residential and commercial land uses within 500 meters.,47,3104,1,0.0
-fine_tuned,find commercial parcels larger than 8000 square feet in census tracts with at least 90% of residents aged 18-64.,35,1190,1,0.0
-fine_tuned,"find parcels that are zoned for mixed-use, within 400 meters of public transportation, and at least 200 meters away from industrial areas.",36,6230,0,0.0
-fine_tuned,find parcels that are either commercial places within 100m of harvard square or residential larger than 5000 square feet and within 200m of 50 restaurants.,48,12297,0,0.36734693877551017
-fine_tuned,find parcels that are zoned for retail and within 300m of a subway station and not within 100m of a competitor.,47,1704,1,0.0
-fine_tuned,"find parcels that are either office space larger than 10,000 sq ft or retail space within 500m of high-density residential areas.",35,1202,0,0.06823411705852926
-fine_tuned,"find commercial parcels that, if larger than 5000 sq ft, must be within 400m of public transit, or if smaller, must be within 200m of residential areas.",228,13419,0,0.47780373831775697
-fine_tuned_rag,Find all parcels that have no more than 2 competing restaurants within 800 meters.,38,1240,1,1.0
-fine_tuned_rag,Find the top 20 parcels in Cambridge with the most diverse mix of residential and commercial land uses within 500 meters.,64,3002,2,0.10000000000000002
-fine_tuned_rag,Find the top 20 commercial parcels in areas with the highest percentage of residents with advanced degrees.,35,1239,0,0.9
-fine_tuned_rag,Find commercial parcels zoned for retail use with fewer than 3 competing retail businesses within 300 meters.,43,1768,1,0.4324324324324324
-fine_tuned_rag,"find commercial parcels that are between 5000-10000 square feet, within 500 meters of a subway station, and have no more than 1 competitor within 500 meters.",53,1940,0,0.8275862068965517
-fine_tuned_rag,find parcels that are zoned for retail and within 300m of a subway station and not within 100m of a competitor.,49,1985,0,0.0
+fine_tuned_rag,Find commercial parcels within 500 meters of Harvard Square.,37,1122,0,0.4449760765550239
+fine_tuned_rag,Find parcels larger than 6000 square feet that are zoned for retail use.,116,7467,0,0.06099397590361446
+fine_tuned_rag,Find all parcels that have no more than 2 competing restaurants within 800 meters.,41,1386,1,1.0
+fine_tuned_rag,Find the top 20 commercial parcels in areas with the highest percentage of residents with advanced degrees.,51,1755,0,0.0
+fine_tuned_rag,Find commercial parcels zoned for retail use with fewer than 3 competing retail businesses within 300 meters.,41,1664,1,0.48484848484848486
+fine_tuned_rag,"find commercial parcels that are between 5000-10000 square feet, within 500 meters of a subway station, and have no more than 1 competitor within 500 meters.",84,3162,1,0.5904761904761905
+fine_tuned_rag,"find parcels that are zoned for mixed-use, within 400 meters of public transportation, and at least 200 meters away from industrial areas.",60,2839,0,0.0
+fine_tuned_rag,find parcels that are zoned for retail and within 300m of a subway station and not within 100m of a competitor.,80,3301,0,0.11764705882352941
+fine_tuned_rag,Find parcels between 1000-10000 square feet within 800 meters of Kendall/MIT station in census tracts where at least 5% of residents have advanced degrees.,32,1174,0,0.0

@@ -1,3 +1,2 @@
 ,total_queries,successful_queries,success_rate,avg_precision,avg_recall,avg_f1_score,avg_exact_match,avg_result_match_rate
-fine_tuned,20,10,50.00%,26.39%,56.77%,30.10%,0.00%,26.39%
-fine_tuned_rag,20,6,30.00%,33.55%,48.57%,33.63%,0.00%,33.55%
+fine_tuned_rag,20,9,45.00%,24.93%,62.73%,29.99%,11.11%,24.93%

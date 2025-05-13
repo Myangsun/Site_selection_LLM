@@ -1,0 +1,10 @@
+{
+  "job_id": "ftjob-qDjxW46t24P6vZw2iNEJIIpg",
+  "status": {
+    "id": "ftjob-qDjxW46t24P6vZw2iNEJIIpg",
+    "status": "succeeded",
+    "fine_tuned_model": "ft:gpt-4o-2024-08-06:mit:spatial-agent-20250508-005341:BUxMPyLM",
+    "created_at": 1746680084,
+    "finished_at": 1746717719
+  }
+}
